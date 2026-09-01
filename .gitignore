@@ -1,0 +1,30 @@
+# Сборка
+build/
+out/
+cmake-build-*/
+CMakeUserPresets.json
+
+# Реальная выгрузка матчей: данные не место в репозитории.
+# Схема лежит в project/data/sample_match.json, тесты работают на фикстурах.
+project/data/matches/
+
+# Ключ Riot живёт только в переменной окружения. Здесь его быть не должно.
+.env
+*.key
+
+# Артефакты ручной сборки экспериментов темы 0
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.o
+*.a
+*.out
+topics/**/experiments/**/a.out
+topics/**/experiments/**/main
+
+# IDE
+.vs/
+.idea/
+.vscode/
+*.user

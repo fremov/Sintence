@@ -1,0 +1,1 @@
+course_add_task(topic01_t03_champion_report champion_report.cpp tests.cpp)
