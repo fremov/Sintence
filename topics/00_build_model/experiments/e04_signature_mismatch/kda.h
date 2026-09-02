@@ -7,6 +7,6 @@
 //
 // Почини: приведи объявление и определение к одной сигнатуре.
 
-double ComputeKda(int kills, int deaths, int assists);
+double ComputeKda(int kills, int deaths, double assists);
 
 #endif  // E04_KDA_H

@@ -12,14 +12,11 @@
 // проблема видна только когда объектные файлы кладут рядом.
 //
 // Почини: см. комментарий в kda.h.
-
 #include <iostream>
 
-#include "kda.h"
-
-double BestKdaOfTwo(int k1, int d1, int a1, int k2, int d2, int a2);
+#include "report.h"
 
 int main() {
-    std::cout << BestKdaOfTwo(10, 5, 5, 3, 7, 12) << '\n';
-    return 0;
+  std::cout << BestKdaOfTwo(10, 5, 5, 3, 7, 12) << '\n';
+  return 0;
 }

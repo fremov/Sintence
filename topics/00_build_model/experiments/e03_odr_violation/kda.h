@@ -11,9 +11,9 @@
 //   2) написать inline перед double — это разрешает одинаковые определения
 //      в разных единицах трансляции
 
-double ComputeKda(int kills, int deaths, int assists) {
-    const int safe_deaths = deaths == 0 ? 1 : deaths;
-    return static_cast<double>(kills + assists) / safe_deaths;
+inline double ComputeKda(int kills, int deaths, int assists) {
+  const int safe_deaths = deaths == 0 ? 1 : deaths;
+  return static_cast<double>(kills + assists) / safe_deaths;
 }
 
 #endif  // E03_KDA_H

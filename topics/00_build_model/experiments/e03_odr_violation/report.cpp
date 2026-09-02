@@ -1,7 +1,8 @@
 // Вторая единица трансляции. Больше ей ничего делать не надо —
 // достаточно включить тот же заголовок.
 
-#include "kda.h"
+
+#include "report.h"
 
 double BestKdaOfTwo(int k1, int d1, int a1, int k2, int d2, int a2) {
     const double first = ComputeKda(k1, d1, a1);
