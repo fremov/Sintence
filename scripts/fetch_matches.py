@@ -14,6 +14,9 @@
     export RIOT_API_KEY=RGAPI-xxxxxxxx
     python3 fetch_matches.py --riot-id "Faker#KR1" --region asia --count 30
     python3 fetch_matches.py --riot-id "Имя#EUW" --region europe --queue 420
+    python3 fetch_matches.py --riot-id "Имя#EUW" --region europe --count 500 --timeline
+
+Повторный запуск догружает только новое: уже скачанные файлы пропускаются.
 """
 
 import argparse
@@ -47,32 +50,61 @@ QUEUES = {
     450: "ARAM",
 }
 
+# Cloudflare перед api.riotgames.com отбивает запросы с дефолтным
+# User-Agent вида "Python-urllib/3.x": отвечает 403 и телом
+# "error code: 1010". Это не Riot и не ключ — это фильтр по UA.
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 
 class RiotError(Exception):
-    pass
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code
 
 
 def request_json(url, api_key, attempt=1):
     """GET с обработкой троттлинга и понятными сообщениями об ошибках."""
-    req = urllib.request.Request(url, headers={"X-Riot-Token": api_key})
+    headers = dict(HEADERS)
+    headers["X-Riot-Token"] = api_key
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8", "replace")
+        except Exception:
+            pass
+        if "error code: 1010" in body:
+            raise RiotError(
+                "запрос отбил Cloudflare (error code: 1010), до Riot он не дошёл.\n"
+                "Причина — фильтр по User-Agent. Проверь, что в запрос уходит HEADERS.",
+                e.code,
+            )
         if e.code == 429:
             wait = int(e.headers.get("Retry-After", 10))
             print(f"  лимит запросов, жду {wait}с", flush=True)
             time.sleep(wait + 1)
             if attempt < 4:
                 return request_json(url, api_key, attempt + 1)
-            raise RiotError("лимит запросов не отпускает, попробуй позже")
+            raise RiotError("лимит запросов не отпускает, попробуй позже", 429)
         if e.code in (401, 403):
             raise RiotError(
-                "ключ отклонён (403). Скорее всего он истёк — dev-ключ живёт 24 часа.\n"
-                "Обнови его на https://developer.riotgames.com и перезапиши RIOT_API_KEY."
+                f"ключ отклонён ({e.code}). Скорее всего он истёк — dev-ключ живёт 24 часа.\n"
+                f"Ответ Riot: {body.strip() or '(пусто)'}\n"
+                "Обнови ключ на https://developer.riotgames.com и перезапиши RIOT_API_KEY.",
+                e.code,
             )
         if e.code == 404:
-            raise RiotError("не найдено (404). Проверь Riot ID и регион.")
+            raise RiotError("не найдено (404). Проверь Riot ID и регион.", 404)
         if e.code >= 500:
             if attempt < 4:
                 print(f"  сервер Riot вернул {e.code}, повтор через 5с", flush=True)
@@ -123,6 +155,23 @@ def get_match(match_id, region, api_key):
     return request_json(url, api_key)
 
 
+def get_timeline(match_id, region, api_key):
+    url = (
+        f"https://{region}.api.riotgames.com/lol/match/v5/matches/"
+        f"{match_id}/timeline"
+    )
+    return request_json(url, api_key)
+
+
+def save_json(path, data, pretty=False):
+    """Компактно по умолчанию: отступы раздувают файл примерно вдвое."""
+    with open(path, "w", encoding="utf-8") as f:
+        if pretty:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        else:
+            json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Скачивает матчи League of Legends в локальные JSON-файлы.",
@@ -138,7 +187,23 @@ def main():
         default=None,
         help="фильтр по очереди: " + ", ".join(f"{k}={v}" for k, v in QUEUES.items()),
     )
-    parser.add_argument("--out", default="project/data/matches", help="куда складывать файлы")
+    parser.add_argument("--out", default="project/data/matches", help="куда складывать матчи")
+    parser.add_argument(
+        "--timeline",
+        action="store_true",
+        help="качать ещё и таймлайны: вдвое больше запросов и примерно в 5 раз больше места, "
+             "но без них не посчитать смерти по минутам и удержание золота",
+    )
+    parser.add_argument(
+        "--timeline-out",
+        default=None,
+        help="куда складывать таймлайны (по умолчанию папка timelines рядом с матчами)",
+    )
+    parser.add_argument(
+        "--pretty",
+        action="store_true",
+        help="сохранять с отступами — читаемо глазами, но файлы вдвое больше",
+    )
     parser.add_argument("--key", default=os.environ.get("RIOT_API_KEY"))
     args = parser.parse_args()
 
@@ -152,6 +217,14 @@ def main():
 
     out_dir = os.path.abspath(args.out)
     os.makedirs(out_dir, exist_ok=True)
+
+    tl_dir = None
+    if args.timeline:
+        tl_dir = os.path.abspath(
+            args.timeline_out
+            or os.path.join(os.path.dirname(out_dir), "timelines")
+        )
+        os.makedirs(tl_dir, exist_ok=True)
 
     try:
         print(f"Ищу аккаунт {args.riot_id} в кластере {args.region}...", flush=True)
@@ -167,49 +240,105 @@ def main():
 
         print(f"Нашёл {len(match_ids)}. Скачиваю в {out_dir}", flush=True)
 
-        saved, skipped, failed = 0, 0, 0
+        saved, skipped, failed, tl_saved, no_timeline = 0, 0, 0, 0, 0
         for i, match_id in enumerate(match_ids, 1):
+            done = []
             path = os.path.join(out_dir, f"{match_id}.json")
+
             if os.path.exists(path):
                 skipped += 1
-                print(f"[{i}/{len(match_ids)}] {match_id} — уже есть", flush=True)
-                continue
-            try:
-                match = get_match(match_id, args.region, args.key)
-            except RiotError as e:
-                failed += 1
-                print(f"[{i}/{len(match_ids)}] {match_id} — не вышло: {e}", flush=True)
+                done.append("матч уже есть")
+            else:
+                try:
+                    match = get_match(match_id, args.region, args.key)
+                    save_json(path, match, args.pretty)
+                    saved += 1
+                    done.append("матч сохранён")
+                except RiotError as e:
+                    failed += 1
+                    done.append(f"матч не вышел: {e}")
                 time.sleep(DELAY_SECONDS)
-                continue
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(match, f, ensure_ascii=False, indent=2)
-            saved += 1
-            print(f"[{i}/{len(match_ids)}] {match_id} — сохранён", flush=True)
-            time.sleep(DELAY_SECONDS)
+
+            # Таймлайн качается отдельно: если матч уже лежал с прошлого
+            # запуска без --timeline, доберём только недостающее.
+            if tl_dir:
+                tl_path = os.path.join(tl_dir, f"{match_id}.json")
+                if os.path.exists(tl_path):
+                    done.append("таймлайн уже есть")
+                else:
+                    try:
+                        timeline = get_timeline(match_id, args.region, args.key)
+                        save_json(tl_path, timeline, args.pretty)
+                        tl_saved += 1
+                        done.append("таймлайн сохранён")
+                    except RiotError as e:
+                        # Матчи Riot хранит 2 года, таймлайны только 1 год.
+                        # Для старой игры 404 — это норма, а не поломка.
+                        if e.code == 404:
+                            no_timeline += 1
+                            done.append("таймлайна нет: игра старше года")
+                        else:
+                            failed += 1
+                            done.append(f"таймлайн не вышел: {e}")
+                    time.sleep(DELAY_SECONDS)
+
+            print(f"[{i}/{len(match_ids)}] {match_id} — {', '.join(done)}", flush=True)
 
         # Индекс нужен, чтобы анализатор не сканировал папку вслепую
         # и чтобы было видно, к какому аккаунту привязана выгрузка.
         index_path = os.path.join(out_dir, "index.json")
+        all_ids = sorted(
+            f[:-5] for f in os.listdir(out_dir)
+            if f.endswith(".json") and f != "index.json"
+        )
+        with_tl = sorted(
+            f[:-5] for f in os.listdir(tl_dir) if f.endswith(".json")
+        ) if tl_dir else []
+
         index = {
             "riot_id": args.riot_id,
             "puuid": puuid,
             "region": args.region,
             "queue": args.queue,
             "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "match_ids": sorted(
-                f[:-5] for f in os.listdir(out_dir)
-                if f.endswith(".json") and f != "index.json"
-            ),
+            "compact": not args.pretty,
+            "match_count": len(all_ids),
+            "timeline_count": len(with_tl),
+            "match_ids": all_ids,
         }
+        # Индекс маленький, его читают глазами — тут отступы уместны.
         with open(index_path, "w", encoding="utf-8") as f:
             json.dump(index, f, ensure_ascii=False, indent=2)
 
-        print(
-            f"\nГотово: сохранено {saved}, пропущено {skipped}, ошибок {failed}.\n"
-            f"Всего в папке: {len(index['match_ids'])} матчей.\n"
-            f"Индекс: {index_path}",
-            flush=True,
+        def folder_mb(d):
+            return sum(
+                os.path.getsize(os.path.join(d, f)) for f in os.listdir(d)
+            ) / 1024 / 1024
+
+        report = (
+            f"\nГотово: матчей сохранено {saved}, пропущено {skipped}, ошибок {failed}."
         )
+        if tl_dir:
+            report += f" Таймлайнов сохранено {tl_saved}."
+            if no_timeline:
+                report += (
+                    f"\nУ {no_timeline} игр таймлайна нет вообще: Riot хранит "
+                    f"матчи 2 года, а таймлайны только 1 год."
+                )
+        report += (
+            f"\nВ папке матчей: {len(all_ids)} шт., {folder_mb(out_dir):.0f} МБ."
+        )
+        if tl_dir:
+            report += (
+                f"\nВ папке таймлайнов: {len(with_tl)} шт., {folder_mb(tl_dir):.0f} МБ."
+            )
+        if tl_dir and len(with_tl) < len(all_ids):
+            report += (
+                f"\nУ {len(all_ids) - len(with_tl)} матчей таймлайна нет — "
+                f"перезапусти с --timeline, чтобы добрать."
+            )
+        report += f"\nИндекс: {index_path}"
+        print(report, flush=True)
         print(
             "\nPUUID твоего аккаунта — он нужен, чтобы находить себя среди 10 участников:\n"
             f"  {puuid}",

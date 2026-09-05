@@ -1,0 +1,24 @@
+<code_scheme name="Google C++ Style" version="173">
+  <option name="RIGHT_MARGIN" value="80" />
+  <codeStyleSettings language="CPP">
+    <option name="KEEP_BLANK_LINES_IN_CODE" value="1" />
+    <option name="BLANK_LINES_BEFORE_METHOD_BODY" value="0" />
+    <option name="BRACE_STYLE" value="5" />
+    <option name="CLASS_BRACE_STYLE" value="5" />
+    <option name="METHOD_BRACE_STYLE" value="5" />
+    <option name="CATCH_ON_NEW_LINE" value="false" />
+    <option name="ELSE_ON_NEW_LINE" value="false" />
+    <option name="ALIGN_MULTILINE_PARAMETERS" value="false" />
+    <option name="SPACE_BEFORE_IF_PARENTHESES" value="true" />
+    <option name="SPACE_BEFORE_WHILE_PARENTHESES" value="true" />
+    <option name="SPACE_BEFORE_FOR_PARENTHESES" value="true" />
+    <option name="SPACE_BEFORE_SWITCH_PARENTHESES" value="true" />
+    <option name="SPACE_BEFORE_CATCH_PARENTHESES" value="true" />
+    <indentOptions>
+      <option name="INDENT_SIZE" value="2" />
+      <option name="CONTINUATION_INDENT_SIZE" value="4" />
+      <option name="TAB_SIZE" value="2" />
+      <option name="USE_TAB_CHARACTER" value="false" />
+    </indentOptions>
+  </codeStyleSettings>
+</code_scheme>

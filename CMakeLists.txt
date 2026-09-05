@@ -83,6 +83,10 @@ endfunction()
 # Отдельно подхватываются эталонные разборы topics/<тема>/demo/.
 # ---------------------------------------------------------------------------
 
+# practice_code — папка для разовой практики (файл там постоянно
+# перезаписывается), поэтому подключаем её явно, а не автообнаружением.
+add_subdirectory(practice_code)
+
 file(GLOB_RECURSE COURSE_TASK_LISTS CONFIGURE_DEPENDS
      "${CMAKE_CURRENT_SOURCE_DIR}/topics/*/tasks/*/CMakeLists.txt")
 file(GLOB COURSE_DEMO_LISTS CONFIGURE_DEPENDS

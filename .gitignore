@@ -7,6 +7,12 @@ CMakeUserPresets.json
 # Реальная выгрузка матчей: данные не место в репозитории.
 # Схема лежит в project/data/sample_match.json, тесты работают на фикстурах.
 project/data/matches/
+project/data/timelines/
+
+# То же самое, но не туда: скрипт запускали из папки scripts/, и он создал
+# своё дерево project/data рядом с собой. Эти матчи стоит перенести
+# в project/data/matches/ и запускать fetch_matches.py из корня репозитория.
+scripts/project/
 
 # Ключ Riot живёт только в переменной окружения. Здесь его быть не должно.
 .env
