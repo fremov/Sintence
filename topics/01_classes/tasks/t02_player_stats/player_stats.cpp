@@ -1,57 +1,47 @@
 #include "player_stats.h"
 
 namespace course {
-namespace {
-
-// Заглушка, чтобы файл собирался до того, как ты напишешь тела.
-// Удали её, когда закончишь.
-const std::string kStub = "<не реализовано>";
-
-}  // namespace
-
-PlayerStats::PlayerStats(std::string /*champion_name*/) {
-    // TODO
+PlayerStats::PlayerStats(std::string champion_name) : champion_name_(
+    std::move(champion_name)) {
 }
 
-void PlayerStats::AddMatch(int /*kills*/, int /*deaths*/, int /*assists*/, bool /*win*/) {
-    // TODO: сначала решить, годятся ли данные, и только потом что-то менять.
+void PlayerStats::AddMatch(int kills, int deaths, int assists, bool win) {
     // Объект, который успел изменить два поля из пяти и передумал, —
     // это худший из возможных вариантов.
+    if (kills >= 0 && deaths >= 0 && assists >= 0) {
+        total_kills_ += kills;
+        total_deaths_ += deaths;
+        total_assists_ += assists;
+        wins_ += win;
+        games_ += 1;
+    }
 }
 
 const std::string& PlayerStats::ChampionName() const {
-    // TODO
-    return kStub;
+    return champion_name_;
 }
 
 int PlayerStats::Games() const {
-    // TODO
-    return -1;
+    return games_;
 }
 
 int PlayerStats::Wins() const {
-    // TODO
-    return -1;
+    return wins_;
 }
 
 int PlayerStats::Losses() const {
-    // TODO
-    return -1;
+    return Games() - Wins();
 }
 
 int PlayerStats::TotalKills() const {
-    // TODO
-    return -1;
+    return total_kills_;
 }
 
 int PlayerStats::TotalDeaths() const {
-    // TODO
-    return -1;
+    return total_deaths_;
 }
 
 int PlayerStats::TotalAssists() const {
-    // TODO
-    return -1;
+    return total_assists_;
 }
-
-}  // namespace course
+} // namespace course
