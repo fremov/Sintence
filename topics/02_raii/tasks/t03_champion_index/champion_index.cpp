@@ -1,33 +1,39 @@
 #include "champion_index.h"
 
 namespace course {
-
-void ChampionIndex::AddReport(ChampionReport /*report*/) {
-    // TODO: найти отчёт с таким же именем чемпиона и заменить его,
-    // либо добавить новый в конец.
-    //
-    // Отчёт пришёл по значению — он уже твой. Класть его в вектор копированием
-    // после этого бессмысленно: подумай, что здесь должно стоять вместо копии.
+void ChampionIndex::AddReport(ChampionReport report) {
+    for (auto& existing : reports_) {
+        if (report.ChampionName() == existing.ChampionName()) {
+            existing = std::move(report);
+            return;
+        }
+    }
+    reports_.push_back(std::move(report));
 }
 
-const ChampionReport* ChampionIndex::Find(const std::string& /*champion_name*/) const {
-    // TODO: линейный проход. Возвращать адрес хранимого отчёта, а не копию.
+const ChampionReport* ChampionIndex::Find(
+    const std::string& champion_name) const {
+    for (const auto& report : reports_) {
+        if (report.ChampionName() == champion_name) {
+            return &report;
+        }
+    }
     return nullptr;
 }
 
 int ChampionIndex::Size() const {
-    // TODO
-    return -1;
+    return static_cast<int>(reports_.size());
 }
 
 bool ChampionIndex::Empty() const {
-    // TODO
-    return true;
+    return reports_.empty();
 }
 
 std::vector<std::string> ChampionIndex::ChampionNames() const {
-    // TODO
-    return std::vector<std::string>();
+    std::vector<std::string> res;
+    for (const auto& report : reports_) {
+        res.push_back(report.ChampionName());
+    }
+    return res;
 }
-
-}  // namespace course
+} // namespace course
