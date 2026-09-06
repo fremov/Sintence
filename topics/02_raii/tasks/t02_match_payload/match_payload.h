@@ -3,7 +3,7 @@
 
 #include <cstddef>
 #include <string>
-
+#include <algorithm>
 // ============================================================================
 // Задача 2.2 — MatchPayload: правило пяти на сыром буфере
 //
@@ -43,17 +43,12 @@ public:
     // Пустой текст — валидный вход: получается пустой payload,
     // и выделять под него ничего не нужно.
     explicit MatchPayload(const std::string& text);
-
-    // ── Твоя часть ──────────────────────────────────────────────────────────
-    // TODO: объяви здесь недостающие специальные функции-члены
-    // и реализуй их в match_payload.cpp.
-    //
-    // Начни с вопроса «сколько раз освободится буфер, если объект скопировать
-    // прямо сейчас?» — ответ на него определяет, что именно надо объявить.
-    // Правило 3/5 из THEORY.md говорит, чем это заканчивается, если написать
-    // только часть.
-    // ────────────────────────────────────────────────────────────────────────
-
+    MatchPayload(const MatchPayload& other);
+    MatchPayload& operator=(const MatchPayload& other);
+    MatchPayload(MatchPayload&& other) noexcept;
+    MatchPayload& operator=(MatchPayload&& other) noexcept;
+    ~MatchPayload();
+    
     // Указатель на байты. nullptr, если payload пуст.
     // Владение не передаётся: освобождает буфер только сам объект.
     const char* Data() const;

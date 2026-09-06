@@ -37,7 +37,9 @@ public:
     // а не упасть посреди выгрузки. Объект в этом случае создаётся, но IsOpen()
     // возвращает false.
     explicit MatchFile(std::string path);
-
+    ~MatchFile();
+    MatchFile(const MatchFile&) = delete;
+    MatchFile& operator=(const MatchFile&) = delete;
     // ── Твоя часть ──────────────────────────────────────────────────────────
     // TODO: объяви здесь специальные функции-члены, которые нужны этому классу,
     // и реализуй их в match_file.cpp.

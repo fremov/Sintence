@@ -1,39 +1,79 @@
 #include "match_payload.h"
 
 namespace course {
-
 MatchPayload::MatchPayload() {
-    // TODO: пустой payload — здесь может не оказаться ни одной строки кода.
-    // Подумай, почему: посмотри на инициализаторы полей в match_payload.h.
 }
 
-MatchPayload::MatchPayload(const std::string& /*text*/) {
-    // TODO: выделить буфер под байты текста и скопировать их туда.
-    // Выделяет new char[n], копирует std::memcpy или std::copy.
-    // Отдельно реши, что делать с пустым текстом.
+MatchPayload::MatchPayload(const std::string& text) {
+    size_ = text.length();
+    if (size_ > 0) {
+        data_ = new char[size_];
+        std::copy(text.begin(), text.end(), data_);
+    }
 }
 
-// TODO: здесь же напиши тела тех специальных функций-членов,
-// которые объявишь в match_payload.h.
+MatchPayload::MatchPayload(const MatchPayload& other) {
+    size_ = other.size_;
+    if (size_ > 0) {
+        data_ = new char[size_];
+        std::copy_n(other.data_, size_, data_);
+    }
+}
+
+MatchPayload& MatchPayload::operator=(const MatchPayload& other) {
+    if (this == &other) {
+        return *this;
+    }
+    delete [] data_;
+    size_ = other.size_;
+    if (size_ > 0) {
+        data_ = new char[size_];
+        std::copy_n(other.data_, size_, data_);
+    }
+
+    return *this;
+}
+
+MatchPayload::MatchPayload(MatchPayload&& other) noexcept {
+    data_ = other.data_;
+    size_ = other.size_;
+    other.data_ = nullptr;
+    other.size_ = 0;
+}
+
+MatchPayload& MatchPayload::operator=(MatchPayload&& other) noexcept {
+    if (this == &other) {
+        return *this;
+    }
+    delete[] data_;
+    data_ = other.data_;
+    size_ = other.size_;
+    other.data_ = nullptr;
+    other.size_ = 0;
+    return *this;
+}
+
+MatchPayload::~MatchPayload() {
+    delete[] data_;
+}
+
 
 const char* MatchPayload::Data() const {
-    // TODO
-    return nullptr;
+    return data_;
 }
 
 std::size_t MatchPayload::Size() const {
-    // TODO
-    return 0;
+    return size_;
 }
 
 bool MatchPayload::Empty() const {
-    // TODO
-    return true;
+    return size_ == 0;
 }
 
 std::string MatchPayload::ToString() const {
-    // TODO
-    return std::string();
+    if (size_ == 0) {
+        return std::string();
+    }
+    return std::string(data_, size_);
 }
-
-}  // namespace course
+} // namespace course

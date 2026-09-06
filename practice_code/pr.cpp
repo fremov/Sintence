@@ -1,66 +1,68 @@
-﻿#include <iostream>
+// Практика: своими глазами посмотреть, как открытый файл превращается
+// в байты в памяти и текст на экране. Без классов, без MatchFile —
+// только голые указатели, чтобы видеть каждый шаг.
+#include <cstdio>
+#include <cstring>
+#include <iostream>
 #include <string>
 
-using namespace std::literals;
-
-class Duck {
-public:
-    void SetName(const std::string& name) {
-        name_ = name;
-    }
-
-    std::string GetName() {
-        return name_;
-    }
-
-    int GetDistance() {
-        return distance_;
-    }
-
-    void SetDistance(int distance) {
-        distance_ = distance;
-    }
-
-    int GetTotalDistance() {
-        return total_distance_;
-    }
-
-    void SetTotalDistance(int total_distance) {
-        total_distance_ = total_distance;
-    }
-
-    void Fly(int distance) {
-        SetDistance(distance);
-        SetTotalDistance(GetTotalDistance() + distance);
-        PrintData();
-    }
-    void PrintData() {
-        std::cout << GetName() << " flies " << GetDistance() << "km. " <<
-            "Total flight distance is " << GetTotalDistance() << "km." << '\n';
-    }
-
-private:
-    std::string name_;
-    int distance_ = 0;
-    int total_distance_ = 0;
-};
+#if defined(_WIN32)
+#include <windows.h>
+#endif
 
 int main() {
-    Duck duck1;
-    duck1.SetName("Whisper Quack"s);
-    Duck duck2;
-    duck2.SetName("Fire Wing"s);
+#if defined(_WIN32)
+    // Консоль Windows по умолчанию использует не UTF-8 (обычно cp866/1251).
+    // Исходник и std::cout здесь работают в UTF-8, поэтому явно переключаем
+    // и вход, и вывод консоли на UTF-8 — иначе русский текст превращается
+    // в кракозябры, хотя данные в файле и в буфере остаются верными.
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+#endif
 
-    int num_commands = 0;
-    std::cin >> num_commands;
+    const std::string path = std::string(COURSE_FIXTURES_DIR) + "/fixture_win_mid.json";
 
-    for (int i = 0; i < num_commands; ++i) {
-        int duck_number, distance;
-        std::cin >> duck_number >> distance;
-        if (duck_number == 1) {
-            duck1.Fly(distance);
-        } else if (duck_number == 2) {
-            duck2.Fly(distance);
-        }
+    // 1. Открываем файл. fopen возвращает FILE* — указатель на структуру,
+    //    которой владеет библиотека ввода-вывода. nullptr — файл не открылся.
+    std::FILE* file = std::fopen(path.c_str(), "rb");
+    if (file == nullptr) {
+        std::cout << "Не удалось открыть: " << path << "\n";
+        return 1;
     }
+    std::cout << "Файл открыт: " << path << "\n";
+
+    // 2. Узнаём размер файла: переходим в конец, спрашиваем позицию,
+    //    возвращаемся в начало. Размер заранее неизвестен —
+    //    вот зачем нужен new[], а не char buf[N] с числом из головы.
+    std::fseek(file, 0, SEEK_END);
+    const long file_size = std::ftell(file);
+    std::fseek(file, 0, SEEK_SET);
+    std::cout << "Размер файла: " << file_size << " байт\n";
+
+    // 3. Выделяем буфер РОВНО под этот размер. До этой строки такой памяти
+    //    не существовало вообще — она появляется только сейчас, во время
+    //    выполнения программы, потому что раньше мы не знали размер.
+    char* buffer = new char[file_size];
+
+    // 4. Читаем файл прямо в этот буфер. Функция ничего не выделяет сама —
+    //    только копирует байты по адресу, который мы ей дали.
+    const std::size_t read_count = std::fread(buffer, 1, file_size, file);
+    std::cout << "Прочитано байт: " << read_count << "\n";
+
+    // 5. Печатаем первые 120 символов — buffer здесь используется как
+    //    обычный char*, указывающий на начало массива байт.
+    std::cout << "\nПервые символы файла:\n";
+    for (long i = 0; i < file_size && i < 520; ++i) {
+        std::cout << buffer[i];
+    }
+    std::cout << "\n";
+
+    // 6. Обязаны освободить и буфер, и файл — ровно по одному разу каждый.
+    //    Забудь любую из этих двух строк — и получишь либо утечку памяти,
+    //    либо утечку файлового дескриптора.
+    delete[] buffer;
+    std::fclose(file);
+
+    std::cout << "\nБуфер освобождён, файл закрыт.\n";
+    return 0;
 }

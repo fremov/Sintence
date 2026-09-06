@@ -4,6 +4,11 @@ add_executable(practice_code pr.cpp)
 target_link_libraries(practice_code PRIVATE course_common)
 set_target_properties(practice_code PROPERTIES FOLDER "practice")
 set_target_properties(practice_code PROPERTIES VS_GLOBAL_VcpkgEnabled false)
+target_compile_definitions(practice_code PRIVATE
+    COURSE_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/project/data/fixtures")
+if(MSVC)
+    target_compile_definitions(practice_code PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
 if(COURSE_ASAN_DLLS)
     add_custom_command(TARGET practice_code POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
