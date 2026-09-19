@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.20)
 project(cpp_mentor_course LANGUAGES CXX)
 
 # ---------------------------------------------------------------------------
@@ -6,9 +6,13 @@ project(cpp_mentor_course LANGUAGES CXX)
 # Этот файл трогать не нужно: новые задачи подхватываются автоматически.
 # ---------------------------------------------------------------------------
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Стандарт — C++23. У MSVC он включается флагом /std:c++latest: /std:c++23 cl
+# не понимает и молча игнорирует (D9002), поэтому стандарт задаётся только
+# через CMake, а не руками в командной строке.
 
 option(COURSE_SANITIZERS "Собирать Debug с address/undefined sanitizer" ON)
 
@@ -27,7 +31,7 @@ endif()
 add_library(course_common INTERFACE)
 # SYSTEM: doctest — чужой заголовок, его предупреждения не наши.
 target_include_directories(course_common SYSTEM INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
-target_compile_features(course_common INTERFACE cxx_std_17)
+target_compile_features(course_common INTERFACE cxx_std_23)
 
 if(MSVC)
     target_compile_options(course_common INTERFACE /W4 /permissive- /utf-8 /EHsc /external:W0)

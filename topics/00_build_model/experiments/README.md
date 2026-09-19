@@ -11,17 +11,22 @@
 
 ```powershell
 cd topics\00_build_model\experiments\e01_undefined_reference
-cl /nologo /std:c++17 /EHsc main.cpp
+cl /nologo /std:c++latest /EHsc main.cpp
 ```
 
 **Linux/macOS:**
 
 ```bash
 cd topics/00_build_model/experiments/e01_undefined_reference
-g++ -std=c++17 main.cpp -o main
+g++ -std=c++23 main.cpp -o main
 ```
 
 Где нужно собрать несколько файлов, точная команда лежит в комментарии в начале `main.cpp`.
+
+`cl` не понимает `/std:c++23`: он печатает `D9002: пропуск неизвестного параметра`
+и молча собирает по стандарту по умолчанию (C++14). Для C++23 у MSVC —
+`/std:c++latest` (то же самое CMake подставляет для всего курса). У GCC и Clang
+флаг называется честно: `-std=c++23`.
 
 ## Что делать с каждым экспериментом
 

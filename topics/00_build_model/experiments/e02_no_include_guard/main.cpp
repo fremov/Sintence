@@ -1,8 +1,8 @@
 // Эксперимент 2: заголовок включён дважды, защиты от повторного включения нет.
 //
 // Собрать:
-//   cl /nologo /std:c++17 /EHsc main.cpp
-//   g++ -std=c++17 main.cpp -o main
+//   cl /nologo /std:c++latest /EHsc main.cpp
+//   g++ -std=c++23 main.cpp -o main
 //
 // Ожидаемая ошибка: C2011 "Kda": повторное определение типа "struct"
 //                   / redefinition of 'struct Kda'.

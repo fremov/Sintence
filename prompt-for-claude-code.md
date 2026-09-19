@@ -51,7 +51,7 @@ I own two books, and the theory you write points into them:
     └── data/
 ```
 
-C++17, CMake ≥ 3.16, doctest (single header, no network at build time). The root `CMakeLists.txt` discovers every `topics/*/tasks/*/CMakeLists.txt` via `file(GLOB_RECURSE ...)` so new tasks appear without edits. `enable_testing()` plus `add_test` per task so `ctest` runs everything.
+C++23 (MSVC: `/std:c++latest`, GCC/Clang: `-std=c++23`), CMake ≥ 3.20, doctest (single header, no network at build time). The root `CMakeLists.txt` discovers every `topics/*/tasks/*/CMakeLists.txt` via `file(GLOB_RECURSE ...)` so new tasks appear without edits. `enable_testing()` plus `add_test` per task so `ctest` runs everything.
 
 Debug builds get `-fsanitize=address,undefined -g -O0` (MSVC: `/fsanitize=address /Zi`) from day one. Undefined behavior doesn't crash — it works until it doesn't.
 

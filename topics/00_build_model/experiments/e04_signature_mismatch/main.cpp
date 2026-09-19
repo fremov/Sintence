@@ -1,8 +1,8 @@
 // Эксперимент 4: объявление и определение разошлись в типе параметра.
 //
 // Собрать:
-//   cl /nologo /std:c++17 /EHsc main.cpp kda.cpp
-//   g++ -std=c++17 main.cpp kda.cpp -o main
+//   cl /nologo /std:c++latest /EHsc main.cpp kda.cpp
+//   g++ -std=c++23 main.cpp kda.cpp -o main
 //
 // Ожидаемая ошибка: та же LNK2019 / undefined reference, что и в e01.
 //

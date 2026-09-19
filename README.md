@@ -8,11 +8,17 @@
 
 ## Требования
 
-- C++17: MSVC 19.2x+, GCC 9+ или Clang 10+
-- CMake ≥ 3.16
+- C++23: MSVC 14.51+ (Visual Studio 2026), GCC 15+ или Clang 20+
+- CMake ≥ 3.20
 - Python 3.8+ (только для выгрузки матчей)
 
 Проверено на этой машине: MSVC 14.51 (Visual Studio 2026), CMake 4.3.1, Python 3.13.7.
+
+Планка высокая осознанно: курс пользуется `std::print`/`std::format`, `contains()`,
+`std::expected` и `<flat_map>`. `<flat_map>` появился в MSVC ровно в 14.51 и в GCC 15,
+`std::print` — в GCC 14 (на Windows требует `-lstdc++exp` при линковке).
+MSVC не понимает флаг `/std:c++23` и молча игнорирует его — стандарт задаётся
+через `/std:c++latest`, и CMake подставляет его сам.
 
 ## Сборка и тесты
 

@@ -1,8 +1,8 @@
 // Эксперимент 1: объявление есть, определения нет.
 //
 // Собрать:
-//   cl /nologo /std:c++17 /EHsc main.cpp        (Developer PowerShell)
-//   g++ -std=c++17 main.cpp -o main             (Linux/macOS)
+//   cl /nologo /std:c++latest /EHsc main.cpp        (Developer PowerShell)
+//   g++ -std=c++23 main.cpp -o main             (Linux/macOS)
 //
 // Ожидаемая ошибка: LNK2019 / undefined reference to `ComputeKda(int, int,
 // int)`.
