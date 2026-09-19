@@ -26,8 +26,12 @@ scripts/project/
 *.o
 *.a
 *.out
-topics/**/experiments/**/a.out
-topics/**/experiments/**/main
+theory/**/experiments/**/a.out
+theory/**/experiments/**/main
+
+# Страница теории собирается из theory/*/THEORY.md скриптом scripts/build_theory.py
+# на каждой сборке. Исходник — Markdown, он и лежит в репозитории.
+theory/index.html
 
 # IDE
 .vs/

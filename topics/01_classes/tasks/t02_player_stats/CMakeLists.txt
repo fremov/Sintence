@@ -1,1 +1,0 @@
-course_add_task(topic01_t02_player_stats player_stats.cpp tests.cpp)

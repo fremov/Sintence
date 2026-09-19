@@ -59,52 +59,49 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# course_add_task(<имя> <исходники...>) — один исполняемый файл с тестами
-# плюс регистрация в ctest.
+# В сборке ровно две мишени:
+#   analyzer        приложение, src/app/main.cpp
+#   analyzer_tests  весь набор тестов одним бинарником
+# плюс analyzer_lib — статическая библиотека с кодом src/, на которую
+# они обе линкуются. Ничего больше здесь не собирается: разовая практика
+# (practice_code) и demo темы 0 собираются руками, командами из их README.
+#
+# Тесты можно отключить: cmake -S . -B build -DANALYZER_TESTS=OFF
 # ---------------------------------------------------------------------------
 
-enable_testing()
+option(ANALYZER_TESTS "Собирать analyzer_tests" ON)
 
-function(course_add_task target)
-    add_executable(${target} ${ARGN})
-    target_link_libraries(${target} PRIVATE course_common)
-    set_target_properties(${target} PROPERTIES FOLDER "course")
-    # Глобальная интеграция vcpkg подмешивается в любой проект MSBuild на машине
-    # и тянет свои include/lib. Курсу это не нужно: он самодостаточный.
-    set_target_properties(${target} PROPERTIES VS_GLOBAL_VcpkgEnabled false)
-    if(COURSE_ASAN_DLLS)
-        add_custom_command(TARGET ${target} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    ${COURSE_ASAN_DLLS} "$<TARGET_FILE_DIR:${target}>"
-            VERBATIM)
-    endif()
-    add_test(NAME ${target} COMMAND ${target})
-endfunction()
+add_subdirectory(src)
+
+if(ANALYZER_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 # ---------------------------------------------------------------------------
-# Автообнаружение задач. Новая папка с CMakeLists.txt внутри
-# topics/<тема>/tasks/<задача>/ появляется в сборке сама, без правок здесь.
-# Отдельно подхватываются эталонные разборы topics/<тема>/demo/.
+# Теория. Исходник — theory/*/THEORY.md, читаемая версия — theory/index.html,
+# собирается скриптом на каждой сборке (0.1 секунды), поэтому не устаревает.
+# Нет Python — просто не собирается, Markdown никуда не девается.
 # ---------------------------------------------------------------------------
 
-# practice_code — папка для разовой практики (файл там постоянно
-# перезаписывается), поэтому подключаем её явно, а не автообнаружением.
-add_subdirectory(practice_code)
+find_package(Python3 COMPONENTS Interpreter QUIET)
 
-# playground — одна программа из всех реализованных задач: видно, как классы
-# работают вместе на настоящих данных. Не тест, в ctest не регистрируется.
-add_subdirectory(playground)
+if(Python3_Interpreter_FOUND)
+    file(GLOB_RECURSE COURSE_THEORY_SOURCES CONFIGURE_DEPENDS
+         "${CMAKE_CURRENT_SOURCE_DIR}/theory/*/THEORY.md")
 
-file(GLOB_RECURSE COURSE_TASK_LISTS CONFIGURE_DEPENDS
-     "${CMAKE_CURRENT_SOURCE_DIR}/topics/*/tasks/*/CMakeLists.txt")
-file(GLOB COURSE_DEMO_LISTS CONFIGURE_DEPENDS
-     "${CMAKE_CURRENT_SOURCE_DIR}/topics/*/demo/CMakeLists.txt")
+    add_custom_command(
+        OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/theory/index.html"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/build_theory.py"
+        DEPENDS ${COURSE_THEORY_SOURCES}
+                "${CMAKE_CURRENT_SOURCE_DIR}/REVIEW.md"
+                "${CMAKE_CURRENT_SOURCE_DIR}/scripts/build_theory.py"
+        COMMENT "Собираю теорию в theory/index.html"
+        VERBATIM)
 
-foreach(list_file IN LISTS COURSE_DEMO_LISTS COURSE_TASK_LISTS)
-    get_filename_component(task_dir "${list_file}" DIRECTORY)
-    file(RELATIVE_PATH task_rel "${CMAKE_CURRENT_SOURCE_DIR}" "${task_dir}")
-    add_subdirectory("${task_rel}")
-endforeach()
-
-list(LENGTH COURSE_TASK_LISTS COURSE_TASK_COUNT)
-message(STATUS "Курс: найдено задач — ${COURSE_TASK_COUNT}")
+    add_custom_target(theory ALL DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/theory/index.html")
+    set_target_properties(theory PROPERTIES VS_GLOBAL_VcpkgEnabled false)
+else()
+    message(STATUS "Python не найден — theory/index.html собирать нечем; "
+                   "теория остаётся в Markdown")
+endif()
