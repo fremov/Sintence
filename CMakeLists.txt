@@ -87,6 +87,10 @@ endfunction()
 # перезаписывается), поэтому подключаем её явно, а не автообнаружением.
 add_subdirectory(practice_code)
 
+# playground — одна программа из всех реализованных задач: видно, как классы
+# работают вместе на настоящих данных. Не тест, в ctest не регистрируется.
+add_subdirectory(playground)
+
 file(GLOB_RECURSE COURSE_TASK_LISTS CONFIGURE_DEPENDS
      "${CMAKE_CURRENT_SOURCE_DIR}/topics/*/tasks/*/CMakeLists.txt")
 file(GLOB COURSE_DEMO_LISTS CONFIGURE_DEPENDS

@@ -1,68 +1,117 @@
-// Практика: своими глазами посмотреть, как открытый файл превращается
-// в байты в памяти и текст на экране. Без классов, без MatchFile —
-// только голые указатели, чтобы видеть каждый шаг.
-#include <cstdio>
-#include <cstring>
+#include <cassert>
 #include <iostream>
-#include <string>
 
-#if defined(_WIN32)
-#include <windows.h>
-#endif
+#include "tv.h"
+
+using namespace std::literals;
 
 int main() {
-#if defined(_WIN32)
-    // Консоль Windows по умолчанию использует не UTF-8 (обычно cp866/1251).
-    // Исходник и std::cout здесь работают в UTF-8, поэтому явно переключаем
-    // и вход, и вывод консоли на UTF-8 — иначе русский текст превращается
-    // в кракозябры, хотя данные в файле и в буфере остаются верными.
-    SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8);
-#endif
+    Car car;
+    // Изначально автомобиль припаркован с выключенным двигателем.
+    assert(!car.IsEngineOn() && car.GetSpeed() == 0 && car.GetDirection() == Direction::STOPPED
+           && car.GetGear() == Gear::PARKED);
 
-    const std::string path = std::string(COURSE_FIXTURES_DIR) + "/fixture_win_mid.json";
+    // Проверка метода Car::GetMaxSpeedForGear.
+    assert(Car::GetMaxSpeedForGear(Gear::PARKED) == 0);
+    assert(Car::GetMaxSpeedForGear(Gear::DRIVE) == Car::MAX_SPEED);
+    assert(Car::GetMaxSpeedForGear(Gear::REVERSE) == Car::MAX_REVERSE_SPEED);
 
-    // 1. Открываем файл. fopen возвращает FILE* — указатель на структуру,
-    //    которой владеет библиотека ввода-вывода. nullptr — файл не открылся.
-    std::FILE* file = std::fopen(path.c_str(), "rb");
-    if (file == nullptr) {
-        std::cout << "Не удалось открыть: " << path << "\n";
-        return 1;
-    }
-    std::cout << "Файл открыт: " << path << "\n";
+    // Во время парковки можно только стоять.
+    assert(Car::IsSpeedValidForGear(0, Gear::PARKED));
+    assert(!Car::IsSpeedValidForGear(-1, Gear::PARKED));
+    assert(!Car::IsSpeedValidForGear(1, Gear::PARKED));
 
-    // 2. Узнаём размер файла: переходим в конец, спрашиваем позицию,
-    //    возвращаемся в начало. Размер заранее неизвестен —
-    //    вот зачем нужен new[], а не char buf[N] с числом из головы.
-    std::fseek(file, 0, SEEK_END);
-    const long file_size = std::ftell(file);
-    std::fseek(file, 0, SEEK_SET);
-    std::cout << "Размер файла: " << file_size << " байт\n";
+    // Вперёд можно ехать со скоростью от 0 до Car::MAX_SPEED.
+    assert(Car::IsSpeedValidForGear(0, Gear::DRIVE));
+    assert(Car::IsSpeedValidForGear(Car::MAX_SPEED, Gear::DRIVE));
+    assert(!Car::IsSpeedValidForGear(-1, Gear::DRIVE));
+    assert(!Car::IsSpeedValidForGear(Car::MAX_SPEED + 1, Gear::DRIVE));
 
-    // 3. Выделяем буфер РОВНО под этот размер. До этой строки такой памяти
-    //    не существовало вообще — она появляется только сейчас, во время
-    //    выполнения программы, потому что раньше мы не знали размер.
-    char* buffer = new char[file_size];
+    // Назад можно ехать со скоростью от 0 до Car::MAX_REVERSE_SPEED.
+    assert(Car::IsSpeedValidForGear(0, Gear::REVERSE));
+    assert(Car::IsSpeedValidForGear(Car::MAX_REVERSE_SPEED, Gear::REVERSE));
+    assert(!Car::IsSpeedValidForGear(-1, Gear::REVERSE));
+    assert(!Car::IsSpeedValidForGear(Car::MAX_REVERSE_SPEED + 1, Gear::REVERSE));
 
-    // 4. Читаем файл прямо в этот буфер. Функция ничего не выделяет сама —
-    //    только копирует байты по адресу, который мы ей дали.
-    const std::size_t read_count = std::fread(buffer, 1, file_size, file);
-    std::cout << "Прочитано байт: " << read_count << "\n";
+    // Можно включить ту же самую передачу даже при выключенном двигателе.
+    bool ok = car.SetGear(Gear::PARKED);
+    assert(ok && car.GetGear() == Gear::PARKED);
 
-    // 5. Печатаем первые 120 символов — buffer здесь используется как
-    //    обычный char*, указывающий на начало массива байт.
-    std::cout << "\nПервые символы файла:\n";
-    for (long i = 0; i < file_size && i < 520; ++i) {
-        std::cout << buffer[i];
-    }
-    std::cout << "\n";
+    // Двигатель можно включить.
+    car.TurnEngineOn();
+    assert(car.IsEngineOn());
 
-    // 6. Обязаны освободить и буфер, и файл — ровно по одному разу каждый.
-    //    Забудь любую из этих двух строк — и получишь либо утечку памяти,
-    //    либо утечку файлового дескриптора.
-    delete[] buffer;
-    std::fclose(file);
+    // Можно включить переднюю передачу.
+    ok = car.SetGear(Gear::DRIVE);
+    assert(ok && car.GetGear() == Gear::DRIVE);
+    assert(car.GetDirection() == Direction::STOPPED);
 
-    std::cout << "\nБуфер освобождён, файл закрыт.\n";
-    return 0;
+    // На передней передаче можно поехать вперёд с максимальной скоростью.
+    ok = car.SetSpeed(Car::MAX_SPEED);
+    assert(ok && car.GetSpeed() == Car::MAX_SPEED);
+    assert(car.GetDirection() == Direction::FORWARD);
+
+    // Нельзя поехать быстрее максимально допустимой скорости.
+    ok = car.SetSpeed(Car::MAX_SPEED + 1);
+    assert(!ok && car.GetSpeed() == Car::MAX_SPEED);
+
+    // Можно снизить скорость.
+    ok = car.SetSpeed(1);
+    assert(ok && (car.GetSpeed() == 1));
+
+    // Нельзя выключить двигатель во время движения.
+    ok = car.TurnEngineOff();
+    assert(car.IsEngineOn());
+    assert(!ok);
+    assert(!ok && car.IsEngineOn());
+
+    // Нельзя включить режим парковки во время движения.
+    ok = car.SetGear(Gear::PARKED);
+    assert(!ok && car.GetGear() == Gear::DRIVE);
+
+    // Нельзя включить заднюю передачу во время движения вперёд.
+    ok = car.SetGear(Gear::REVERSE);
+    assert(!ok && car.GetGear() == Gear::DRIVE);
+    assert(car.GetSpeed() == 1 && car.GetDirection() == Direction::FORWARD);
+
+    // Можно остановиться.
+    ok = car.SetSpeed(0);
+    assert(ok && car.GetSpeed() == 0 && car.GetDirection() == Direction::STOPPED);
+
+    // Можно включить заднюю передачу.
+    ok = car.SetGear(Gear::REVERSE);
+    assert(ok && car.GetGear() == Gear::REVERSE);
+    // Пока скорость равна нулю, автомобиль стоит на месте.
+    assert(car.GetSpeed() == 0 && car.GetDirection() == Direction::STOPPED);
+
+    // Двигаемся назад.
+    ok = car.SetSpeed(Car::MAX_REVERSE_SPEED);
+    assert(ok && (car.GetSpeed() == Car::MAX_REVERSE_SPEED));
+    assert(car.GetDirection() == Direction::BACKWARD);
+
+    // Нельзя включить переднюю передачу во время движения назад.
+    ok = car.SetGear(Gear::DRIVE);
+    assert(!ok && (car.GetGear() == Gear::REVERSE && car.GetDirection() == Direction::BACKWARD));
+
+    // Нельзя включить режим парковки, двигаясь назад.
+    ok = car.SetGear(Gear::PARKED);
+    assert(!ok && (car.GetGear() == Gear::REVERSE && car.GetDirection() == Direction::BACKWARD));
+
+    // Можно остановиться.
+    ok = car.SetSpeed(0);
+    assert(ok && car.GetSpeed() == 0 && car.GetDirection() == Direction::STOPPED);
+
+    // Остановившись, нельзя выключить двигатель не в режиме парковки.
+    ok = car.TurnEngineOff();
+    assert(!ok && car.IsEngineOn());
+
+    // Можно включить режим парковки.
+    ok = car.SetGear(Gear::PARKED);
+    assert(ok && (car.GetGear() == Gear::PARKED));
+
+    // В режиме парковки можно выключить двигатель.
+    ok = car.TurnEngineOff();
+    assert(ok && !car.IsEngineOn());
+
+    std::cout << "All tests succeeded"s << std::endl;
 }
