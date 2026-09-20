@@ -7,11 +7,20 @@
 # Приложение и тесты линкуются с этой библиотекой, а не пересобирают исходники.
 # ---------------------------------------------------------------------------
 
-file(GLOB ANALYZER_CORE_SOURCES CONFIGURE_DEPENDS "core/*.cpp")
-file(GLOB ANALYZER_DATA_SOURCES CONFIGURE_DEPENDS "data/*.cpp")
-file(GLOB ANALYZER_ANALYSIS_SOURCES CONFIGURE_DEPENDS "analysis/*.cpp")
+# Заголовки перечисляются наравне с .cpp. Компилятору они не нужны — он видит
+# их через #include, — но мишень описывает состав проекта, и IDE рисует дерево
+# именно по ней. Без этой строки в Rider и Visual Studio видно одни .cpp.
+file(GLOB ANALYZER_CORE_SOURCES CONFIGURE_DEPENDS "core/*.cpp" "core/*.h")
+file(GLOB ANALYZER_DATA_SOURCES CONFIGURE_DEPENDS "data/*.cpp" "data/*.h")
+file(GLOB ANALYZER_ANALYSIS_SOURCES CONFIGURE_DEPENDS "analysis/*.cpp" "analysis/*.h")
 
 add_library(analyzer_lib STATIC
+    ${ANALYZER_CORE_SOURCES}
+    ${ANALYZER_DATA_SOURCES}
+    ${ANALYZER_ANALYSIS_SOURCES})
+
+# Папки в дереве IDE повторяют папки на диске, а не свалены в одну кучу.
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
     ${ANALYZER_CORE_SOURCES}
     ${ANALYZER_DATA_SOURCES}
     ${ANALYZER_ANALYSIS_SOURCES})
