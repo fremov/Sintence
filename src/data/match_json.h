@@ -1,8 +1,8 @@
 #ifndef ANALYZER_DATA_MATCH_JSON_H
 #define ANALYZER_DATA_MATCH_JSON_H
 
+
 #include <optional>
-#include <string>
 #include <string_view>
 
 #include "match_source.h"  // MatchEntry, MatchLine
@@ -48,6 +48,7 @@ namespace course {
 //
 // Внимание: gameDuration лежит в info, а не в participant — это единственное
 // поле, которое берётся не из строки игрока.
+
 std::optional<MatchEntry> ParseMatchEntry(std::string_view json_text, std::string_view puuid);
 
 }  // namespace course
