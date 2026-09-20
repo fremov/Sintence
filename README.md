@@ -90,7 +90,6 @@ third_party/json.hpp          nlohmann/json 3.12.0, один заголовок
 .claude/skills/cpp-mentor/    учебный контракт
 PROGRESS.md                   состояние проекта, слабые места, журнал сессий
 REVIEW.md                     повторение по интервалам: очередь и вопросы на вспоминание
-practice_code/                разовая практика из Практикума, в сборку не входит
 ```
 
 Зависимости идут только вниз: `app/ → analysis/ → core/`, `app/ → data/ → core/`.

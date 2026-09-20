@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(cpp_mentor_course LANGUAGES CXX)
+project(FremLeagueStats LANGUAGES CXX)
 
 # ---------------------------------------------------------------------------
 # Базовые настройки курса.
