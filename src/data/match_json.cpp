@@ -40,7 +40,7 @@ std::optional<MatchEntry> ParseMatchEntry(std::string_view json_text,
         return std::nullopt;
     }
 
-    const auto info = doc["info"];
+    const auto& info = doc["info"];
     const auto duration = GetInt(info, "gameDuration");
     if (!duration) {
         return std::nullopt;
@@ -96,6 +96,7 @@ std::optional<MatchEntry> ParseMatchEntry(std::string_view json_text,
         match_entry.line.minions =
             static_cast<int>(*total_minions) + static_cast<int>(
                 *neutral_minions);
+        break;
     }
     if (match_entry.champion_name.empty()) {
         return std::nullopt;

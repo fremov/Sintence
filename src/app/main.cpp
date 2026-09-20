@@ -6,47 +6,32 @@
 // Прошлая версия с таблицей: git show 912b154:src/app/main.cpp
 
 #include <print>
-#include <fstream>
 #include <iostream>
-#include <sstream>
-#include "../data/match_json.h"
+#include <chrono>
+
+#include "file_match_source.h"
 
 int main() {
-    // 1. Путь к одному файлу: ANALYZER_DEFAULT_DATA_DIR + "/RU_528252891.json"
-    //    (макрос подставляет CMake, это project/data/matches)
-    //
-    // 2. Прочитать файл целиком в std::string — идиома из главы 6, раздел 3:
-    //    ifstream, потом ostringstream << file.rdbuf(), потом .str()
-    //
-    // 3. const auto entry = course::ParseMatchEntry(текст, puuid);
-    //    puuid — поле "puuid" в project/data/matches/index.json, скопируй строкой
-    //
-    // 4. if (!entry) — напечатать, что вернулся nullopt, и на этом всё
-    //
-    // 5. Иначе печатать поля и смотреть, совпадают ли они с файлом:
-    //    entry->champion_name, entry->line.kills, .deaths, .assists,
-    //    .win, .minions, .duration_seconds
-    //    В RU_528252891.json должно получиться: Darius 3/11/9, поражение,
-    //    173 миньона, 2315 секунд.
-    std::ifstream file(
-        std::string(ANALYZER_DEFAULT_DATA_DIR) + "/RU_528252891.json");
-    if (!file) {
-        return 0;
-    }
-    std::ostringstream buffer;
-    buffer << file.rdbuf();
-    const std::string text = buffer.str();
-    auto match = course::ParseMatchEntry(
-        text,
-        "csZCcpsbfg3pwMdH7DlTxjw14mrcXuufMghn9QDGs1f0ua6X-HT120NA7POURMeO2sie4ujBzR07MQ");
-    if (!match) {
+    auto match = course::FileMatchSource(ANALYZER_DEFAULT_DATA_DIR, "csZCcpsbfg3pwMdH7DlTxjw14mrcXuufMghn9QDGs1f0ua6X-HT120NA7POURMeO2sie4ujBzR07MQ");
+    if (!match.IsAvailable()) {
         std::println("Return nullopt");
         return 0;
     }
-    std::println(
+    const auto start = std::chrono::steady_clock::now();
+    auto matches = match.LoadMatches();
+    const auto end = std::chrono::steady_clock::now();
+    const auto elapsed_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    size_t count = 0;
+    for (const auto& match1 : matches) {
+        std::println(
         "Match duration: {} Name {} kills {} death {} assist {} win {} minions {}",
-        match->line.duration_seconds, match->champion_name, match->line.kills,
-        match->line.deaths, match->line.assists, match->line.win,
-        match->line.minions);
+        match1.line.duration_seconds, match1.champion_name, match1.line.kills,
+        match1.line.deaths, match1.line.assists, match1.line.win,
+        match1.line.minions);
+        ++count;
+    }
+    std::println("Count {}", count);
+    std::println("LoadMatches took {} ms", elapsed_ms);
     return 0;
 }

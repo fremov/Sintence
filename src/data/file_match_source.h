@@ -5,9 +5,9 @@
 #include <filesystem>
 #include <string>
 #include <vector>
-
+#include <filesystem>
 #include "match_source.h"  // интерфейс MatchSource из core/
-
+namespace fs = std::filesystem;
 // ============================================================================
 // data/file_match_source — источник матчей из каталога с файлами.
 //
