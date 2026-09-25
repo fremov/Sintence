@@ -28,7 +28,7 @@ const std::string& ChampionReport::ChampionName() const {
 }
 
 int ChampionReport::Games() const {
-    return lines_.size();
+    return static_cast<int>(lines_.size());
 }
 
 double ChampionReport::Kda() const {
