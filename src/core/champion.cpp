@@ -1,6 +1,6 @@
 #include "champion.h"
 
-namespace course {
+namespace sintence {
 namespace {
 
     std::string CheckName(std::string name) {
@@ -22,22 +22,18 @@ Champion::Champion(std::string name, std::string role) : name_(CheckName(name)),
 }
 
 const std::string& Champion::Name() const {
-    // TODO
     return name_;
 }
 
 const std::string& Champion::Role() const {
-    // TODO
     return role_;
 }
 
 std::string Champion::DisplayName() const {
-    // TODO
     return name_ + " (" + role_ + ")";
 }
 
 bool Champion::HasRole(const std::string& role) const {
-    // TODO
     if (role.empty()) return false;
 
     if (CheckRole(role) == role_) return true;
@@ -45,4 +41,4 @@ bool Champion::HasRole(const std::string& role) const {
     return false;
 }
 
-}  // namespace course
+}  // namespace sintence

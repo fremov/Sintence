@@ -1,8 +1,8 @@
 #include "champion_pool.h"
 
-#include "champion.h"  // тема 1 — нормализация роли уже написана там
+#include "champion.h"  // нормализация роли уже написана там
 
-namespace course {
+namespace sintence {
 void ChampionPool::Add(const std::string& champion_name,
                        const std::string& role) {
     if (champion_name.empty()) {
@@ -34,4 +34,4 @@ bool ChampionPool::Contains(const std::string& champion_name) const {
 std::size_t ChampionPool::Size() const {
     return champions_.size();
 }
-} // namespace course
+} // namespace sintence

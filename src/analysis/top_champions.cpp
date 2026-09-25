@@ -1,52 +1,31 @@
 #include "top_champions.h"
 
 #include <algorithm>
+#include <utility>
 
-namespace course {
+namespace sintence {
 
 std::vector<ChampionGames> TopChampionsByGames(const std::map<std::string, int>& games,
                                                std::size_t limit) {
-    // TODO: вернуть топ чемпионов по числу игр.
-    //
-    // ПОТОК ДАННЫХ
-    //   вход:        std::map<std::string, int> — то, что вернула
-    //                CountGamesByChampion из задачи 4.1 (имя → число игр)
-    //   накопитель:  std::vector<ChampionGames> — копия таблицы, но уже
-    //                вектором: сортировать map нельзя (см. ниже)
-    //   выход:       тот же вектор, отсортированный и обрезанный до limit
-    //
-    // API, который нужен:
-    //   rows.reserve(games.size())        необязательно, но правильно:
-    //                                     размер известен заранее
-    //   rows.push_back({name, count})     ChampionGames — агрегат,
-    //                                     фигурные скобки заполняют поля
-    //                                     по порядку объявления
-    //   std::ranges::sort(rows, comp)     comp — лямбда от двух ChampionGames
-    //   rows.resize(n)                    обрезать хвост
-    //
-    // ПОРЯДОК ДЕЙСТВИЙ
-    //   1. Переложить пары из map в вектор ChampionGames.
-    //      std::ranges::sort(games) не скомпилируется: у std::map нет
-    //      random-access итераторов, дерево нельзя переставлять местами.
-    //      Ошибка при попытке — C2672 / no matching function.
-    //   2. Отсортировать вектор одним вызовом std::ranges::sort с лямбдой.
-    //      Компаратор отвечает на вопрос «должен ли a идти СТРОГО раньше b»:
-    //        - разное число игр  -> больше игр идёт раньше;
-    //        - одинаковое число  -> меньшее имя идёт раньше.
-    //      Только < и >, никаких <= и >=: иначе Debug-сборка падает
-    //      с abort (код 3) и сообщением invalid comparator.
-    //   3. Обрезать до limit, если элементов больше. limit больше размера —
-    //      не трогать вектор вообще: resize на большее число ДОБАВИТ
-    //      пустых строк, а этого контракт не разрешает.
-    //   4. Вернуть вектор.
-    //
-    // Проекцию (третий аргумент sort) здесь применить не получится: критерий
-    // составной — сначала games, потом champion_name. Проекция умеет смотреть
-    // ровно на одно поле, поэтому тут нужна именно лямбда. В задаче 5.3
-    // будет обратный случай.
-    (void)games;
-    (void)limit;
-    return {};
+    std::vector<ChampionGames> rows;
+    rows.reserve(games.size());
+    for (const auto& [name, count] : games) {
+        rows.push_back(ChampionGames{name, count});
+    }
+
+    // Критерий составной, поэтому проекция на одно поле не годится:
+    // сначала по убыванию числа игр, при равенстве — по возрастанию имени.
+    std::ranges::sort(rows, [](const ChampionGames& left, const ChampionGames& right) {
+        if (left.games != right.games) {
+            return left.games > right.games;
+        }
+        return left.champion_name < right.champion_name;
+    });
+
+    if (rows.size() > limit) {
+        rows.resize(limit);
+    }
+    return rows;
 }
 
-}  // namespace course
+}  // namespace sintence

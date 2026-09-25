@@ -6,13 +6,13 @@
 #include <utility>
 #include <vector>
 
-using course::BuildSummaries;
-using course::ChampionIndex;
-using course::ChampionReport;
-using course::ChampionSummary;
-using course::MatchLine;
-using course::TopByWinrate;
-using course::TotalGames;
+using sintence::BuildSummaries;
+using sintence::ChampionIndex;
+using sintence::ChampionReport;
+using sintence::ChampionSummary;
+using sintence::MatchLine;
+using sintence::TopByWinrate;
+using sintence::TotalGames;
 
 namespace {
 

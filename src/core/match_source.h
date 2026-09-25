@@ -1,39 +1,27 @@
-#ifndef COURSE_TOPIC03_MATCH_SOURCE_H
-#define COURSE_TOPIC03_MATCH_SOURCE_H
+#ifndef SINTENCE_CORE_MATCH_SOURCE_H
+#define SINTENCE_CORE_MATCH_SOURCE_H
 
 #include <string>
 #include <vector>
 #include <print>
-#include "champion_report.h"  // тема 1 — MatchLine
+#include "champion_report.h"  // MatchLine
 
-// ============================================================================
-// Задача 3.1 — MatchSource: интерфейс и первая реализация
+// core/match_source — интерфейс источника матчей и реализация на фикстурах.
 //
-// Критерии приёмки (что значит «готово» сверх зелёных тестов):
-//   1. MatchSource остаётся абстрактным: ни одного тела в нём не появилось.
-//      Создать его объект невозможно, и тест это проверяет.
-//   2. FixtureMatchSource переопределяет все три метода, каждое переопределение
-//      помечено override. Без него опечатка в сигнатуре не будет замечена.
-//   3. LoadMatches не отдаёт ссылку на внутренний вектор и не меняет объект:
-//      метод const, возвращается копия.
-//   4. Недоступный источник — не ошибка: IsAvailable() == false, а LoadMatches()
-//      возвращает пустой вектор. Живая игра выключена — анализатор работает дальше.
-//   5. Заглушек и TODO в файле не осталось.
+// Вызывающий код работает с MatchSource и не знает, какая реализация ему
+// досталась: файлы, Match-V5, Live Client Data или заранее подготовленные
+// записи.
 //
-// Одна идея этой задачи: вызывающий код работает с MatchSource и никогда
-// не знает, какая реализация ему досталась.
-//
-// Callback к теме 1: MatchEntry несёт MatchLine — ту самую структуру, которой
-// ты кормил ChampionReport неделю назад.
-// ============================================================================
+// Недоступный источник — не ошибка: IsAvailable() == false, LoadMatches()
+// возвращает пустой вектор, приложение работает дальше.
 
-namespace course {
+namespace sintence {
 
 // Одна строка матча вместе с именем чемпиона, на котором её сыграли.
-// Структура, а не класс: голые поля, никаких инвариантов («Чистый код», глава 6).
+// Структура, а не класс: голые поля, никаких инвариантов 
 //
 // Источник отдаёт именно такие записи — уже разобранные, без JSON и без HTTP.
-// Разбор появится в теме 8, сеть — в теме 15; интерфейс от этого не изменится.
+// Разбор появится, сеть —; интерфейс от этого не изменится.
 struct MatchEntry {
     std::string champion_name;
     MatchLine line;
@@ -58,7 +46,7 @@ public:
     virtual std::vector<MatchEntry> LoadMatches() const = 0;
 
     // Интерфейс не копируется: копия через базовую ссылку скопировала бы
-    // только базовую часть объекта (срезка). Тема 2, правило 3/5.
+    // только базовую часть объекта (срезка).
     MatchSource(const MatchSource&) = delete;
     MatchSource& operator=(const MatchSource&) = delete;
 
@@ -89,6 +77,6 @@ private:
     bool available_ = false;
 };
 
-}  // namespace course
+}  // namespace sintence
 
-#endif  // COURSE_TOPIC03_MATCH_SOURCE_H
+#endif  // SINTENCE_CORE_MATCH_SOURCE_H

@@ -5,7 +5,7 @@
 #include <set>
 #include <string>
 
-using course::ChampionPool;
+using sintence::ChampionPool;
 
 TEST_CASE("пул хранит уникальных чемпионов") {
     ChampionPool pool;
@@ -48,7 +48,7 @@ TEST_CASE("у одного чемпиона может быть нескольк
     CHECK(pool.Size() == 1);  // чемпион по-прежнему один
 }
 
-TEST_CASE("роль нормализуется через Champion из темы 1") {
+TEST_CASE("роль нормализуется через Champion") {
     // Callback: приводить регистр своими руками здесь нельзя —
     // это уже умеет Champion, и второй экземпляр той же логики разойдётся.
     ChampionPool pool;

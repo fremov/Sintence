@@ -1,6 +1,6 @@
 #include "games_by_champion.h"
 
-namespace course {
+namespace sintence {
 std::map<std::string, int> CountGamesByChampion(
     const std::vector<MatchEntry>& entries) {
     std::map<std::string, int> games;
@@ -35,4 +35,4 @@ std::string MostPlayedChampion(const std::map<std::string, int>& games) {
     }
     return champion_name;
 }
-} // namespace course
+} // namespace sintence

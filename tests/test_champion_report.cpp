@@ -2,8 +2,8 @@
 
 #include "champion_report.h"
 
-using course::ChampionReport;
-using course::MatchLine;
+using sintence::ChampionReport;
+using sintence::MatchLine;
 
 namespace {
 
@@ -76,7 +76,7 @@ TEST_CASE("ноль смертей не делит на ноль") {
 
 TEST_CASE("испорченные строки отбрасываются целиком") {
     // Некорректный вход. gameDuration == 0 бывает у ремейков,
-    // отрицательные значения — след от null в JSON (тема 8).
+    // отрицательные значения — след от null в JSON.
     ChampionReport report("Thresh");
     report.Add(MakeLine(4, 2, 20, true, 30, 1500));
 

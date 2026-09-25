@@ -1,32 +1,22 @@
-#ifndef ANALYZER_DATA_MATCH_JSON_H
-#define ANALYZER_DATA_MATCH_JSON_H
+#ifndef SINTENCE_DATA_MATCH_JSON_H
+#define SINTENCE_DATA_MATCH_JSON_H
 
 
 #include <optional>
 #include <string_view>
-
+#include "json_helpers.h"
 #include "match_source.h"  // MatchEntry, MatchLine
 
-// ============================================================================
 // data/match_json — превращает ответ Riot Match-V5 в MatchEntry.
 //
-// Это первый адаптер из project/ARCHITECTURE.md: «каждый умеет ровно одно —
-// превратить чужой JSON в типы core/». Ни одного nlohmann-типа наружу
-// не выходит, и это проверяется тем, что в этом заголовке его нет.
+// Разбор чужого формата живёт в одном месте; ни одного типа nlohmann наружу
+// не выходит.
 //
-// Критерии приёмки:
-//   1. В match_json.h не появилось ни одного типа из nlohmann — библиотека
-//      видна только внутри .cpp. Правило 4 из ARCHITECTURE.md.
-//   2. Битый JSON не роняет программу: возвращается std::nullopt.
-//   3. Отсутствующее или нечисловое поле — тоже nullopt, а не мусор в числе.
-//   4. Матч, в котором нужного игрока нет, — nullopt, и это не ошибка.
-//   5. Заглушек и TODO в файле не осталось.
-//
-// Одна идея: разбор чужого формата живёт в одном месте, и всё остальное
-// приложение о JSON не знает.
-// ============================================================================
+// nullopt возвращается, если JSON не разбирается, если обязательное поле
+// отсутствует или не того типа, и если нужного игрока в матче нет —
+// последнее не ошибка.
 
-namespace course {
+namespace sintence {
 
 // Разбирает один матч Match-V5 и достаёт из него строку нужного игрока.
 //
@@ -51,6 +41,6 @@ namespace course {
 
 std::optional<MatchEntry> ParseMatchEntry(std::string_view json_text, std::string_view puuid);
 
-}  // namespace course
+}  // namespace sintence
 
-#endif  // ANALYZER_DATA_MATCH_JSON_H
+#endif  // SINTENCE_DATA_MATCH_JSON_H

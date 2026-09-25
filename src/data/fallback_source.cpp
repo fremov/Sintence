@@ -1,6 +1,6 @@
 #include "fallback_source.h"
 
-namespace course {
+namespace sintence {
 FallbackMatchSource::FallbackMatchSource(const MatchSource& primary,
                                          const MatchSource& backup) {
     primary_ = &primary;
@@ -36,4 +36,4 @@ std::vector<MatchEntry> FallbackMatchSource::LoadMatches() const {
     }
     return {};
 }
-} // namespace course
+} // namespace sintence

@@ -1,5 +1,5 @@
-#ifndef ANALYZER_DATA_FILE_MATCH_SOURCE_H
-#define ANALYZER_DATA_FILE_MATCH_SOURCE_H
+#ifndef SINTENCE_DATA_FILE_MATCH_SOURCE_H
+#define SINTENCE_DATA_FILE_MATCH_SOURCE_H
 
 #include <cstddef>
 #include <filesystem>
@@ -8,28 +8,16 @@
 #include <filesystem>
 #include "match_source.h"  // интерфейс MatchSource из core/
 namespace fs = std::filesystem;
-// ============================================================================
 // data/file_match_source — источник матчей из каталога с файлами.
 //
-// Четвёртая реализация MatchSource, и первая, которая читает настоящие данные.
-// Весь остальной анализатор от её появления не меняется ни на строку —
-// ровно то, ради чего в теме 3 заводился интерфейс.
+// Адаптер отвечает за «где лежит и как прочитать»: разбор формата — в
+// match_json, метрики — в analysis/.
 //
-// Критерии приёмки:
-//   1. В analysis/ и app/ не появилось ни одного упоминания
-//      FileMatchSource — они работают через const MatchSource&.
-//   2. Несуществующий каталог — IsAvailable() == false и пустой вектор,
-//      а не исключение и не падение.
-//   3. Битый файл среди нормальных не роняет загрузку: он пропускается,
-//      остальные читаются.
-//   4. index.json в выгрузке — не матч; он не должен попадать в записи.
-//   5. Заглушек и TODO в файле не осталось.
-//
-// Одна идея: адаптер отвечает за «где лежит и как прочитать», и больше
-// ни за что. Разбор формата — в match_json, метрики — в analysis/.
-// ============================================================================
+// Несуществующий каталог даёт IsAvailable() == false и пустой вектор,
+// а не исключение. Битый файл среди нормальных пропускается, остальные
+// читаются. index.json из выгрузки матчем не считается.
 
-namespace course {
+namespace sintence {
 
 class FileMatchSource : public MatchSource {
 public:
@@ -64,6 +52,6 @@ private:
     std::string puuid_;
 };
 
-}  // namespace course
+}  // namespace sintence
 
-#endif  // ANALYZER_DATA_FILE_MATCH_SOURCE_H
+#endif  // SINTENCE_DATA_FILE_MATCH_SOURCE_H

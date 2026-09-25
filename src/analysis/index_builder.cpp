@@ -1,6 +1,6 @@
 #include "index_builder.h"
 
-namespace course {
+namespace sintence {
 ChampionIndex BuildChampionIndex(const MatchSource& source) {
     ChampionIndex index;
     if (!source.IsAvailable()) {
@@ -28,4 +28,4 @@ ChampionIndex BuildChampionIndex(const MatchSource& source) {
     }
     return index;
 }
-} // namespace course
+} // namespace sintence

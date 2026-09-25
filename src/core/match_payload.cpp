@@ -1,6 +1,6 @@
 #include "match_payload.h"
 
-namespace course {
+namespace sintence {
 MatchPayload::MatchPayload() {
 }
 
@@ -76,4 +76,4 @@ std::string MatchPayload::ToString() const {
     }
     return std::string(data_, size_);
 }
-} // namespace course
+} // namespace sintence

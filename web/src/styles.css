@@ -1,0 +1,41 @@
+/* Пурпурный — цветовой ключ прозрачности окна (см. src/app/overlay_window.cpp).
+   Всё, что не этого цвета, видно поверх игры.
+
+   Панель занимает окно целиком и БЕЗ скруглений по внешнему краю: при
+   скруглении сглаженные пиксели границы не совпадают с ключом точно
+   и остаются на экране пурпурной каймой. Скругления внутри панели —
+   пожалуйста, они лежат на непрозрачном фоне. */
+:root {
+  --panel: #12161d;
+  --panel-soft: #1a212b;
+  --edge: #262d38;
+  --text: #e8ecf2;
+  --muted: #7d8899;
+  --order: #4b9dff;
+  --chaos: #ff5f56;
+  --gold: #c8aa6e;
+  --danger: #ff8b80;
+  --ok: #4ad66d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  background: #ff00ff;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}

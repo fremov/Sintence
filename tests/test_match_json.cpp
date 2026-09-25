@@ -7,8 +7,8 @@
 #include <sstream>
 #include <string>
 
-using course::MatchEntry;
-using course::ParseMatchEntry;
+using sintence::MatchEntry;
+using sintence::ParseMatchEntry;
 
 namespace {
 
@@ -17,7 +17,7 @@ constexpr std::string_view kFixturePuuid =
     "753b38aaf5955163d62c2fc323d8fca3572932060f70d47a05d1b8949156f88101e215348fb08e";
 
 std::string ReadFixture(const std::string& name) {
-    const std::filesystem::path path = std::filesystem::path(COURSE_FIXTURES_DIR) / name;
+    const std::filesystem::path path = std::filesystem::path(SINTENCE_FIXTURES_DIR) / name;
     std::ifstream file(path);
     REQUIRE_MESSAGE(file.good(), "не найдена фикстура: " << path.string());
 
@@ -102,9 +102,9 @@ TEST_CASE("валидный JSON без нужной структуры") {
 
 TEST_CASE("настоящий матч из выгрузки") {
     // Не фикстура, а файл из project/data/matches — тот самый формат,
-    // который приедет из Riot API в теме 15.
+    // который приедет из Riot API.
     const std::filesystem::path path =
-        std::filesystem::path(COURSE_MATCHES_DIR) / "RU_528252891.json";
+        std::filesystem::path(SINTENCE_MATCHES_DIR) / "RU_528252891.json";
     std::ifstream file(path);
     REQUIRE_MESSAGE(file.good(), "нет файла выгрузки: " << path.string());
 

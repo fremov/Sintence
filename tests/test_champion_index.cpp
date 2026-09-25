@@ -6,9 +6,9 @@
 #include <type_traits>
 #include <utility>
 
-using course::ChampionIndex;
-using course::ChampionReport;
-using course::MatchLine;
+using sintence::ChampionIndex;
+using sintence::ChampionReport;
+using sintence::MatchLine;
 
 namespace {
 
@@ -55,7 +55,7 @@ TEST_CASE("добавленный отчёт находится по имени"
     CHECK(found->Games() == 2);
 }
 
-TEST_CASE("метрики темы 1 доступны через индекс") {
+TEST_CASE("метрики отчёта доступны через индекс") {
     // Callback: ChampionReport продолжает работать внутри нового типа.
     // (10 + 4 килла + 8 + 6 ассистов) / 4 смерти = 7.0
     ChampionIndex index;
@@ -108,7 +108,7 @@ TEST_CASE("несколько чемпионов, имена в порядке �
 }
 
 TEST_CASE("копия индекса независима") {
-    // Правило нуля в действии: ты не написал копирующий конструктор,
+    // Правило нуля в действии: копирующий конструктор не написан,
     // а копия всё равно глубокая — потому что std::vector умеет копировать себя.
     ChampionIndex original;
     original.AddReport(AhriReport());
@@ -146,7 +146,7 @@ TEST_CASE("перемещение бесплатное и не бросает") 
 }
 
 TEST_CASE("const-объект отдаёт данные, но не даёт их менять") {
-    // Возврат к теме 1. Если этот тест не компилируется — где-то потерян const.
+    // Если этот тест не компилируется — где-то потерян const.
     ChampionIndex mutable_index;
     mutable_index.AddReport(AhriReport());
 

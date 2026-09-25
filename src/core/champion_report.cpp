@@ -1,6 +1,6 @@
 #include "champion_report.h"
 
-namespace course {
+namespace sintence {
 ChampionReport::ChampionReport(std::string champion_name) : champion_name_(
     std::move(champion_name)) {
 }
@@ -85,4 +85,4 @@ bool ChampionReport::HasEnoughData() const {
     }
     return false;
 }
-} // namespace course
+} // namespace sintence

@@ -1,39 +1,19 @@
-#ifndef COURSE_TOPIC05_RANGES_SUMMARY_H
-#define COURSE_TOPIC05_RANGES_SUMMARY_H
+#ifndef SINTENCE_ANALYSIS_RANGES_SUMMARY_H
+#define SINTENCE_ANALYSIS_RANGES_SUMMARY_H
 
 #include <cstddef>
 #include <string>
 #include <vector>
 
-#include "champion_index.h"  // тема 2 — ChampionIndex, внутри ChampionReport
+#include "champion_index.h"  // ChampionIndex, внутри ChampionReport
 
-// ============================================================================
-// Задача 5.3 — сводка по индексу: конвейер views и проекции
+// analysis/ranges_summary — сводка по индексу чемпионов.
 //
-// Критерии приёмки — кратко; подробности, сигнатуры и поток данных
-// в TODO рядом с телами функций в ranges_summary.cpp:
-//   1. BuildSummaries и TopByWinrate написаны конвейером views
-//      с материализацией через std::ranges::to. Ни одного цикла for.
-//   2. Сортировка в TopByWinrate — через проекцию, а не через лямбду
-//      из трёх строк: критерий здесь одно поле, и это тот случай,
-//      ради которого проекции существуют.
-//   3. TotalGames — один вызов std::ranges::fold_left.
-//   4. Ни одна функция не возвращает view наружу: только std::vector.
-//   5. Заглушек и TODO в файле не осталось.
-//
-// Одна идея этой задачи: ленивый конвейер «отфильтровать → преобразовать →
-// взять N» и проекция вместо лямбды там, где критерий — одно поле.
-//
-// Callback к темам 1 и 2: сводка собирается из метрик ChampionReport
-// (Kda, Winrate, HasEnoughData) по отчётам из ChampionIndex.
-//
-// Зачем это анализатору: ChampionSummary — это ровно строка таблицы,
-// которую увидит пользователь в теме 18. С этой задачи у анализатора
-// появляется слой, который отдаёт наружу готовые к показу числа,
-// а не внутренние объекты.
-// ============================================================================
+// ChampionSummary — готовая строка таблицы для интерфейса: метрики посчитаны
+// заранее, а не вычисляются при каждой отрисовке.
+// Ни одна функция не возвращает view наружу, только std::vector.
 
-namespace course {
+namespace sintence {
 
 // Строка сводки по одному чемпиону: всё, что нужно показать в таблице.
 //
@@ -65,9 +45,8 @@ std::vector<ChampionSummary> BuildSummaries(const ChampionIndex& index);
 //   - строки с enough_data == false отбрасываются целиком, каким бы
 //     ни был их винрейт: 100% по двум играм не попадает в топ никогда;
 //   - порядок — по УБЫВАНИЮ winrate;
-//   - ничью по винрейту разрывать не нужно: контракт её не определяет,
-//     и тест на неё не опирается (в отличие от задачи 5.1, где тай-брейк
-//     был частью требования);
+//   - ничья по винрейту контрактом не определена: порядок таких строк
+//     считать стабильным нельзя;
 //   - limit — сколько строк вернуть максимум; 0 даёт пустой вектор,
 //     число больше размера — всё, что есть;
 //   - пустой вход — пустой вектор.
@@ -83,6 +62,6 @@ std::vector<ChampionSummary> TopByWinrate(const std::vector<ChampionSummary>& su
 // Пустая сводка — 0.
 int TotalGames(const std::vector<ChampionSummary>& summaries);
 
-}  // namespace course
+}  // namespace sintence
 
-#endif  // COURSE_TOPIC05_RANGES_SUMMARY_H
+#endif  // SINTENCE_ANALYSIS_RANGES_SUMMARY_H

@@ -4,7 +4,7 @@
 #include <numeric>
 #include <ranges>
 
-namespace course {
+namespace sintence {
 std::vector<ChampionSummary> BuildSummaries(const ChampionIndex& index) {
     return index.ChampionNames() |
            std::views::transform([&index](const std::string& name) {
@@ -35,4 +35,4 @@ int TotalGames(const std::vector<ChampionSummary>& summaries) {
         summaries, 0,
         [](int acc, const ChampionSummary& s) { return s.games + acc; });
 }
-}  // namespace course
+}  // namespace sintence

@@ -3,7 +3,7 @@
 #include <map>
 #include <string>
 
-namespace course {
+namespace sintence {
 ChampionIndex BuildChampionIndexFast(const MatchSource& source) {
     ChampionIndex index;
     if (!source.IsAvailable()) {
@@ -23,4 +23,4 @@ ChampionIndex BuildChampionIndexFast(const MatchSource& source) {
     }
     return index;
 }
-} // namespace course
+} // namespace sintence

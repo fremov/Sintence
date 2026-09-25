@@ -2,7 +2,7 @@
 
 #include "player_stats.h"
 
-using course::PlayerStats;
+using sintence::PlayerStats;
 
 TEST_CASE("новая статистика пустая") {
     // Граничный случай: ноль матчей. Всё нулевое, ничего не сломано,

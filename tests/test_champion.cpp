@@ -2,7 +2,7 @@
 
 #include "champion.h"
 
-using course::Champion;
+using sintence::Champion;
 
 TEST_CASE("имя сохраняется как есть") {
     const Champion champion("Ahri", "MIDDLE");

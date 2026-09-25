@@ -1,36 +1,24 @@
-#ifndef COURSE_TOPIC04_GAMES_BY_CHAMPION_H
-#define COURSE_TOPIC04_GAMES_BY_CHAMPION_H
+#ifndef SINTENCE_ANALYSIS_GAMES_BY_CHAMPION_H
+#define SINTENCE_ANALYSIS_GAMES_BY_CHAMPION_H
 
 #include <map>
 #include <string>
 #include <vector>
 
-#include "match_source.h"  // тема 3 — MatchEntry
+#include "match_source.h"  // MatchEntry
 
-// ============================================================================
-// Задача 4.1 — таблица «чемпион → сколько записей»
+// analysis/games_by_champion — таблица «чемпион -> сколько записей».
 //
-// Критерии приёмки — кратко; подробности, сигнатуры и поток данных
-// в TODO рядом с телами функций в games_by_champion.cpp:
-//   1. Таблица строится на std::map, без ручного линейного поиска.
-//   2. Чтение таблицы нигде не идёт через operator[].
-//   3. Записи с пустым именем чемпиона не попадают в таблицу.
-//   4. Заглушек и TODO в файле не осталось.
-//
-// Одна идея этой задачи: ассоциативный контейнер вместо ручного поиска,
-// и разница между чтением и записью в нём.
-//
-// Зачем это анализатору: «сколько игр на каждом чемпионе» — первая строка
-// любого экрана статистики, и считается она на каждое обновление данных.
-// ============================================================================
+// Базовая агрегация, с которой начинается любой экран статистики.
+// Записи с пустым именем чемпиона в таблицу не попадают.
 
-namespace course {
+namespace sintence {
 
 // Сколько записей пришлось на каждого чемпиона.
 //
 // Ключ — имя чемпиона как оно пришло, значение — число записей с этим именем.
 // Регистр не нормализуется: "ahri" и "Ahri" — разные ключи, нормализацией
-// занимается Champion из темы 1, а не этот слой.
+// занимается Champion, а не этот слой.
 //
 // Здесь не проверяется валидность самих строк матча: это работа
 // ChampionReport::Add. Считаются все записи, включая те, что позже будут
@@ -49,6 +37,6 @@ int GamesOf(const std::map<std::string, int>& games, const std::string& champion
 // Ничья: побеждает тот, кто меньше лексикографически ("Ahri" раньше "Zed").
 std::string MostPlayedChampion(const std::map<std::string, int>& games);
 
-}  // namespace course
+}  // namespace sintence
 
-#endif  // COURSE_TOPIC04_GAMES_BY_CHAMPION_H
+#endif  // SINTENCE_ANALYSIS_GAMES_BY_CHAMPION_H

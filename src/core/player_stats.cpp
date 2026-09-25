@@ -1,6 +1,6 @@
 #include "player_stats.h"
 
-namespace course {
+namespace sintence {
 PlayerStats::PlayerStats(std::string champion_name) : champion_name_(
     std::move(champion_name)) {
 }
@@ -44,4 +44,4 @@ int PlayerStats::TotalDeaths() const {
 int PlayerStats::TotalAssists() const {
     return total_assists_;
 }
-} // namespace course
+} // namespace sintence

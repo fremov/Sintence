@@ -1,41 +1,23 @@
-#ifndef COURSE_TOPIC05_CHAMPION_FILTERS_H
-#define COURSE_TOPIC05_CHAMPION_FILTERS_H
+#ifndef SINTENCE_ANALYSIS_CHAMPION_FILTERS_H
+#define SINTENCE_ANALYSIS_CHAMPION_FILTERS_H
 
 #include <string>
 #include <vector>
 
-#include "champion_index.h"  // тема 2 — ChampionIndex, внутри ChampionReport
+#include "champion_index.h"  // ChampionIndex, внутри ChampionReport
 
-// ============================================================================
-// Задача 5.2 — фильтры по индексу: предикаты вместо циклов
+// analysis/champion_filters — выборки по индексу чемпионов.
 //
-// Критерии приёмки — кратко; подробности, сигнатуры и поток данных
-// в TODO рядом с телами функций в champion_filters.cpp:
-//   1. Каждая из трёх функций — один вызов алгоритма плюс лямбда.
-//      Ни одного цикла for в файле.
-//   2. Лямбды захватывают index поимённо, а не через [=] или [&].
-//   3. Нигде не разыменовывается указатель от Find без проверки на nullptr.
-//   4. Заглушек и TODO в файле не осталось.
-//
-// Одна идея этой задачи: предикат как лямбда, и три алгоритма-вопроса,
-// которые отвечают «сколько», «какие» и «есть ли хотя бы один».
-//
-// Callback к темам 1 и 2: работаем с ChampionIndex (тема 2), а решения
-// принимаем по HasEnoughData() и Winrate() из ChampionReport (тема 1).
-// HasEnoughData — та самая фича, ради которой анализатор отказывается
-// печатать winrate по 12 играм.
-//
-// Зачем это анализатору: «показать только тех, по кому есть данные» и
-// «есть ли вообще чемпион с винрейтом выше 60%» — это фильтры интерфейса
-// из темы 18 и условия для подсказок оверлея из темы 19.
-// ============================================================================
+// Три вопроса к одному индексу: сколько чемпионов набрали достаточную
+// выборку, какие из них прошли порог по числу игр, есть ли хотя бы один
+// с винрейтом выше заданного.
 
-namespace course {
+namespace sintence {
 
 // Сколько чемпионов в индексе набрали достаточно игр для выводов.
 //
 // «Достаточно» определяет сам отчёт — ChampionReport::HasEnoughData().
-// Своего порога здесь заводить не нужно: он уже есть в теме 1
+// Своего порога здесь заводить не нужно: он уже есть
 // (kMinGamesForConclusion), и второй его экземпляр разойдётся с первым.
 //
 // Пустой индекс — 0.
@@ -46,8 +28,7 @@ int CountChampionsWithEnoughData(const ChampionIndex& index);
 // Контракт:
 //   - сравнение нестрогое: ровно min_games игр — попадает;
 //   - порядок имён — тот же, что у ChampionIndex::ChampionNames(),
-//     то есть порядок добавления. Сортировкой занимается задача 5.1,
-//     а не эта функция;
+//     то есть порядок добавления. Сортировка — дело вызывающего кода, а не эта функция;
 //   - min_games <= 0 — вернуть всех, кто есть в индексе;
 //   - пустой индекс — пустой вектор.
 std::vector<std::string> ChampionsWithMinGames(const ChampionIndex& index, int min_games);
@@ -62,6 +43,6 @@ std::vector<std::string> ChampionsWithMinGames(const ChampionIndex& index, int m
 // Пустой индекс — false.
 bool HasChampionAboveWinrate(const ChampionIndex& index, double min_winrate);
 
-}  // namespace course
+}  // namespace sintence
 
-#endif  // COURSE_TOPIC05_CHAMPION_FILTERS_H
+#endif  // SINTENCE_ANALYSIS_CHAMPION_FILTERS_H

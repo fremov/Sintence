@@ -1,6 +1,6 @@
 #include "match_source.h"
 
-namespace course {
+namespace sintence {
 FixtureMatchSource::FixtureMatchSource(std::string name,
                                        std::vector<MatchEntry> entries,
                                        bool available) : name_(std::move(name)),
@@ -21,4 +21,4 @@ std::vector<MatchEntry> FixtureMatchSource::LoadMatches() const {
     }
     return entries_;
 }
-} // namespace course
+} // namespace sintence

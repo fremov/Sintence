@@ -1,0 +1,8 @@
+{
+  "name": "frem-league-stats",
+  "version-string": "0.1.0",
+  "dependencies": [
+    { "name": "cpp-httplib", "features": ["openssl"] },
+    "webview2"
+  ]
+}

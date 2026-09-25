@@ -1,6 +1,6 @@
 #include "champion_index.h"
 
-namespace course {
+namespace sintence {
 void ChampionIndex::AddReport(ChampionReport report) {
     for (auto& existing : reports_) {
         if (report.ChampionName() == existing.ChampionName()) {
@@ -36,4 +36,4 @@ std::vector<std::string> ChampionIndex::ChampionNames() const {
     }
     return res;
 }
-} // namespace course
+} // namespace sintence

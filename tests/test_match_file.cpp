@@ -5,14 +5,14 @@
 #include <string>
 #include <type_traits>
 
-using course::MatchFile;
+using sintence::MatchFile;
 
 namespace {
 
 // Путь подставляет CMake — тесты работают с настоящими фикстурами анализатора
 // из project/data/fixtures/, а не с выдуманными файлами.
-const std::string kExistingPath = std::string(COURSE_FIXTURES_DIR) + "/fixture_win_mid.json";
-const std::string kMissingPath = std::string(COURSE_FIXTURES_DIR) + "/no_such_match_9999.json";
+const std::string kExistingPath = std::string(SINTENCE_FIXTURES_DIR) + "/fixture_win_mid.json";
+const std::string kMissingPath = std::string(SINTENCE_FIXTURES_DIR) + "/no_such_match_9999.json";
 
 }  // namespace
 
@@ -81,7 +81,7 @@ TEST_CASE("два объекта на один путь владеют разн�
 }
 
 TEST_CASE("все геттеры доступны у const-объекта") {
-    // Возврат к теме 1: если этот тест не компилируется — где-то потерян const.
+    // Если этот тест не компилируется — где-то потерян const.
     MatchFile mutable_file(kExistingPath);
     const MatchFile& file = mutable_file;
 

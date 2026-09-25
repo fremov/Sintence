@@ -2,32 +2,7 @@
 
 #include "json.hpp"
 
-namespace course {
-namespace {
-std::optional<int> GetInt(const nlohmann::json& obj, std::string_view key) {
-    if (!obj.contains(key) || !obj[key].is_number_integer()) {
-        return std::nullopt;
-    }
-    return obj[key].get<int>();
-}
-
-std::optional<std::string> GetString(const nlohmann::json& obj,
-                                     std::string_view key) {
-    if (!obj.contains(key) || !obj[key].is_string()) {
-        return std::nullopt;
-    }
-    return obj[key].get<std::string>();
-}
-
-std::optional<bool>
-GetBoolean(const nlohmann::json& obj, std::string_view key) {
-    if (!obj.contains(key) || !obj[key].is_boolean()) {
-        return std::nullopt;
-    }
-    return obj[key].get<bool>();
-}
-}
-
+namespace sintence {
 
 std::optional<MatchEntry> ParseMatchEntry(std::string_view json_text,
                                           std::string_view puuid) {
@@ -103,4 +78,4 @@ std::optional<MatchEntry> ParseMatchEntry(std::string_view json_text,
     }
     return match_entry;
 }
-} // namespace course
+} // namespace sintence

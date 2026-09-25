@@ -7,7 +7,7 @@
 
 #include "match_json.h"
 
-namespace course {
+namespace sintence {
 namespace  {
 bool IsMatchCandidate(const fs::path& path) {
     return (path.extension() == ".json" && path.filename() != "index.json");
@@ -63,4 +63,4 @@ std::size_t FileMatchSource::JsonFileCount() const {
     }
     return counter;
 }
-} // namespace course
+} // namespace sintence

@@ -1,6 +1,6 @@
 #include "match_file.h"
 
-namespace course {
+namespace sintence {
 MatchFile::MatchFile(std::string path) : path_(path) {
     // Функция называется std::fopen, режим для чтения бинарно — "rb".
     // Она возвращает nullptr, если открыть не удалось, и это нормальный
@@ -25,4 +25,4 @@ const std::string& MatchFile::Path() const {
 std::FILE* MatchFile::Handle() const {
     return file_;
 }
-} // namespace course
+} // namespace sintence

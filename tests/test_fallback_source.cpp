@@ -6,10 +6,10 @@
 #include <utility>
 #include <vector>
 
-using course::FallbackMatchSource;
-using course::FixtureMatchSource;
-using course::MatchEntry;
-using course::MatchSource;
+using sintence::FallbackMatchSource;
+using sintence::FixtureMatchSource;
+using sintence::MatchEntry;
+using sintence::MatchSource;
 
 namespace {
 

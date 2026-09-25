@@ -6,12 +6,12 @@
 #include <utility>
 #include <vector>
 
-using course::BuildChampionIndex;
-using course::ChampionIndex;
-using course::ChampionReport;
-using course::FixtureMatchSource;
-using course::MatchEntry;
-using course::MatchSource;
+using sintence::BuildChampionIndex;
+using sintence::ChampionIndex;
+using sintence::ChampionReport;
+using sintence::FixtureMatchSource;
+using sintence::MatchEntry;
+using sintence::MatchSource;
 
 namespace {
 
@@ -131,7 +131,7 @@ TEST_CASE("записи с пустым именем чемпиона отбра
 }
 
 TEST_CASE("негодные строки матча отбрасывает ChampionReport, а не builder") {
-    // Callback к теме 1: duration_seconds <= 0 и отрицательные значения
+    // duration_seconds <= 0 и отрицательные значения
     // отбрасывает Add. Чемпион при этом остаётся в индексе с нулём игр —
     // он был в выгрузке, и терять его молча нельзя.
     const FixtureMatchSource source("fixtures",
@@ -148,7 +148,7 @@ TEST_CASE("негодные строки матча отбрасывает Champ
 }
 
 TEST_CASE("регистр имени сохраняется как есть") {
-    // Нормализацией занимается Champion из темы 1, а не этот слой.
+    // Нормализацией занимается Champion, а не этот слой.
     const FixtureMatchSource source("fixtures",
                                     {Entry("ahri", 1, 1, 1, true, 10, 600),
                                      Entry("Ahri", 2, 1, 1, true, 10, 600)},
@@ -185,7 +185,7 @@ TEST_CASE("builder работает с любой реализацией инт�
 
 TEST_CASE("индекс переживает смерть источника") {
     // Индекс владеет своими отчётами: он копирует данные, а не ссылается
-    // на внутренности источника. К теме 17 источник будет жить в другом потоке.
+    // на внутренности источника. Позже источник переедет в отдельный поток.
     ChampionIndex index;
     {
         const FixtureMatchSource source("fixtures", MixedEntries(), true);

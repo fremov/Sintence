@@ -8,8 +8,8 @@
 
 #include "index_by_map.h"
 
-using course::FileMatchSource;
-using course::MatchSource;
+using sintence::FileMatchSource;
+using sintence::MatchSource;
 
 namespace {
 
@@ -17,7 +17,7 @@ constexpr std::string_view kRealPuuid =
     "csZCcpsbfg3pwMdH7DlTxjw14mrcXuufMghn9QDGs1f0ua6X-HT120NA7POURMeO2sie4ujBzR07MQ";
 
 std::filesystem::path MatchesDir() {
-    return std::filesystem::path(COURSE_MATCHES_DIR);
+    return std::filesystem::path(SINTENCE_MATCHES_DIR);
 }
 
 }  // namespace
@@ -86,12 +86,12 @@ TEST_CASE("чужой puuid — ноль записей, но не ошибка"
 }
 
 TEST_CASE("источник работает через интерфейс MatchSource") {
-    // Проверка того, ради чего в теме 3 заводился интерфейс: анализ
+    // Проверка того, ради чего заводился интерфейс: анализ
     // не знает, что перед ним файлы.
     const FileMatchSource source(MatchesDir(), std::string(kRealPuuid));
     const MatchSource& as_interface = source;
 
-    const auto index = course::BuildChampionIndexFast(as_interface);
+    const auto index = sintence::BuildChampionIndexFast(as_interface);
 
     CHECK_FALSE(index.Empty());
     CHECK(index.Size() > 0);

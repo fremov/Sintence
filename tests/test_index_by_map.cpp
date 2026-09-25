@@ -2,19 +2,19 @@
 
 #include "index_by_map.h"
 
-#include "index_builder.h"  // задача 3.3 — с ней сравниваем результат
+#include "index_builder.h"  // с ней сравниваем результат
 
 #include <string>
 #include <utility>
 #include <vector>
 
-using course::BuildChampionIndex;
-using course::BuildChampionIndexFast;
-using course::ChampionIndex;
-using course::ChampionReport;
-using course::FixtureMatchSource;
-using course::MatchEntry;
-using course::MatchSource;
+using sintence::BuildChampionIndex;
+using sintence::BuildChampionIndexFast;
+using sintence::ChampionIndex;
+using sintence::ChampionReport;
+using sintence::FixtureMatchSource;
+using sintence::MatchEntry;
+using sintence::MatchSource;
 
 namespace {
 
@@ -143,7 +143,7 @@ TEST_CASE("записи с пустым именем чемпиона отбра
 }
 
 TEST_CASE("негодные строки отбрасывает ChampionReport, чемпион остаётся") {
-    // Callback к теме 1: duration_seconds <= 0 отбрасывает Add,
+    // duration_seconds <= 0 отбрасывает Add,
     // но сам чемпион из выгрузки не теряется.
     const FixtureMatchSource source("fixtures",
                                     {Entry("Yasuo", 5, 1, 5, true, 100, 0),

@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# analyzer_lib — весь код анализатора, кроме точки входа.
+# sintence_lib — весь код анализатора, кроме точки входа.
 # Слои по project/ARCHITECTURE.md:
 #   core/     доменные типы, ничего про файлы, JSON и сеть
 #   data/     адаптеры источников
@@ -10,53 +10,90 @@
 # Заголовки перечисляются наравне с .cpp. Компилятору они не нужны — он видит
 # их через #include, — но мишень описывает состав проекта, и IDE рисует дерево
 # именно по ней. Без этой строки в Rider и Visual Studio видно одни .cpp.
-file(GLOB ANALYZER_CORE_SOURCES CONFIGURE_DEPENDS "core/*.cpp" "core/*.h")
-file(GLOB ANALYZER_DATA_SOURCES CONFIGURE_DEPENDS "data/*.cpp" "data/*.h")
-file(GLOB ANALYZER_ANALYSIS_SOURCES CONFIGURE_DEPENDS "analysis/*.cpp" "analysis/*.h")
+file(GLOB SINTENCE_CORE_SOURCES CONFIGURE_DEPENDS "core/*.cpp" "core/*.h")
+file(GLOB SINTENCE_DATA_SOURCES CONFIGURE_DEPENDS "data/*.cpp" "data/*.h")
+file(GLOB SINTENCE_ANALYSIS_SOURCES CONFIGURE_DEPENDS "analysis/*.cpp" "analysis/*.h")
 
-add_library(analyzer_lib STATIC
-    ${ANALYZER_CORE_SOURCES}
-    ${ANALYZER_DATA_SOURCES}
-    ${ANALYZER_ANALYSIS_SOURCES})
+add_library(sintence_lib STATIC
+    ${SINTENCE_CORE_SOURCES}
+    ${SINTENCE_DATA_SOURCES}
+    ${SINTENCE_ANALYSIS_SOURCES})
 
 # Папки в дереве IDE повторяют папки на диске, а не свалены в одну кучу.
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    ${ANALYZER_CORE_SOURCES}
-    ${ANALYZER_DATA_SOURCES}
-    ${ANALYZER_ANALYSIS_SOURCES})
+    ${SINTENCE_CORE_SOURCES}
+    ${SINTENCE_DATA_SOURCES}
+    ${SINTENCE_ANALYSIS_SOURCES})
 
-target_include_directories(analyzer_lib PUBLIC
+target_include_directories(sintence_lib PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/core"
     "${CMAKE_CURRENT_SOURCE_DIR}/data"
     "${CMAKE_CURRENT_SOURCE_DIR}/analysis")
 
-# MatchFile сознательно работает с fopen (тема 2 — RAII на сыром ресурсе).
+# MatchFile работает с fopen напрямую и владеет файлом сам.
 # MSVC считает fopen устаревшим и требует fopen_s, которого нет в стандарте;
 # это определение было в сборке задачи 2.1 и переехало сюда вместе с кодом.
 if(MSVC)
-    target_compile_definitions(analyzer_lib PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_definitions(sintence_lib PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
-target_link_libraries(analyzer_lib PUBLIC course_common)
-set_target_properties(analyzer_lib PROPERTIES FOLDER "analyzer")
-set_target_properties(analyzer_lib PROPERTIES VS_GLOBAL_VcpkgEnabled false)
+# cpp-httplib + OpenSSL — HTTP-клиент к Riot и локальный сервер.
+# Ставится через vcpkg по манифесту vcpkg.json, собирать руками ничего не нужно.
+# httplib::httplib тянет за собой OpenSSL и определяет CPPHTTPLIB_OPENSSL_SUPPORT.
+find_package(httplib CONFIG REQUIRED)
+
+target_link_libraries(sintence_lib PUBLIC sintence_common httplib::httplib)
+set_target_properties(sintence_lib PROPERTIES FOLDER "sintence")
+set_target_properties(sintence_lib PROPERTIES VS_GLOBAL_VcpkgEnabled false)
 
 # ---------------------------------------------------------------------------
-# analyzer — само приложение.
+# sintence — само приложение.
 # ---------------------------------------------------------------------------
 
-add_executable(analyzer app/main.cpp)
-target_link_libraries(analyzer PRIVATE analyzer_lib)
-set_target_properties(analyzer PROPERTIES FOLDER "analyzer")
-set_target_properties(analyzer PROPERTIES VS_GLOBAL_VcpkgEnabled false)
+# WebView2 — окно оверлея. Ставится тем же манифестом vcpkg.json.
+find_package(unofficial-webview2 CONFIG REQUIRED)
 
-# Путь к данным по умолчанию — чтобы запускать без аргументов.
-target_compile_definitions(analyzer PRIVATE
-    ANALYZER_DEFAULT_DATA_DIR="${CMAKE_SOURCE_DIR}/project/data/matches")
+add_executable(sintence
+    app/main.cpp
+    app/live_api_server.cpp
+    app/live_api_server.h
+    app/overlay_window.cpp
+    app/overlay_window.h
+    app/sintence.manifest)
 
-if(COURSE_ASAN_DLLS)
-    add_custom_command(TARGET analyzer POST_BUILD
+# Манифест встраивается в exe: совместимость с версиями Windows и DPI.
+# Права администратора — отдельным флагом линкера, иначе MSVC и наш манифест
+# спорят об атрибуте level (manifest authoring error c1010001).
+#
+# Зачем права: League работает с анти-читом Vanguard от администратора,
+# и Windows не пускает процесс с меньшими правами ни к горячим клавишам,
+# ни поверх его окна. Выключается ради отладки без запроса UAC:
+#   cmake -S . -B build-noadmin -DSINTENCE_REQUIRE_ADMIN=OFF ...
+option(SINTENCE_REQUIRE_ADMIN "Требовать права администратора для sintence.exe" ON)
+
+if(MSVC AND SINTENCE_REQUIRE_ADMIN)
+    target_link_options(sintence PRIVATE
+        "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'")
+endif()
+
+target_link_libraries(sintence PRIVATE sintence_lib unofficial::webview2::webview2)
+set_target_properties(sintence PROPERTIES FOLDER "sintence")
+set_target_properties(sintence PROPERTIES VS_GLOBAL_VcpkgEnabled false)
+
+# Без UNICODE макросы Win32 вроде IDC_ARROW раскрываются в ANSI-вариант,
+# и W-функции получают char* вместо wchar_t*.
+target_compile_definitions(sintence PRIVATE UNICODE _UNICODE)
+
+# Пути, зашитые в бинарник, чтобы запускать без аргументов:
+#   SINTENCE_DEFAULT_DATA_DIR — выгрузка матчей для офлайн-режима
+#   SINTENCE_WEB_DIR          — собранный фронтенд, который раздаёт сервер
+target_compile_definitions(sintence PRIVATE
+    SINTENCE_DEFAULT_DATA_DIR="${CMAKE_SOURCE_DIR}/project/data/matches"
+    SINTENCE_WEB_DIR="${CMAKE_SOURCE_DIR}/web/dist")
+
+if(SINTENCE_ASAN_DLLS)
+    add_custom_command(TARGET sintence POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${COURSE_ASAN_DLLS} "$<TARGET_FILE_DIR:analyzer>"
+                ${SINTENCE_ASAN_DLLS} "$<TARGET_FILE_DIR:sintence>"
         VERBATIM)
 endif()

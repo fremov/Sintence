@@ -2,14 +2,14 @@
 
 #include "top_champions.h"
 
-#include "games_by_champion.h"  // задача 4.1 — callback
+#include "games_by_champion.h"  // callback
 
 #include <map>
 #include <string>
 #include <vector>
 
-using course::ChampionGames;
-using course::TopChampionsByGames;
+using sintence::ChampionGames;
+using sintence::TopChampionsByGames;
 
 namespace {
 
@@ -92,7 +92,7 @@ TEST_CASE("один чемпион") {
 TEST_CASE("callback к задаче 4.1: вход берётся прямо из CountGamesByChampion") {
     // Две функции из разных тем работают в связке — так они и будут
     // стоять в анализаторе: подсчёт, потом сортировка.
-    const std::vector<course::MatchEntry> entries = {
+    const std::vector<sintence::MatchEntry> entries = {
         {"Ahri", {}},
         {"Zed", {}},
         {"Ahri", {}},
@@ -101,7 +101,7 @@ TEST_CASE("callback к задаче 4.1: вход берётся прямо из
         {"Ahri", {}},
     };
 
-    const auto top = TopChampionsByGames(course::CountGamesByChampion(entries), 5);
+    const auto top = TopChampionsByGames(sintence::CountGamesByChampion(entries), 5);
 
     REQUIRE(top.size() == 2);
     CHECK(top[0].champion_name == "Ahri");

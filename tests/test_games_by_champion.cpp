@@ -7,10 +7,10 @@
 #include <utility>
 #include <vector>
 
-using course::CountGamesByChampion;
-using course::GamesOf;
-using course::MatchEntry;
-using course::MostPlayedChampion;
+using sintence::CountGamesByChampion;
+using sintence::GamesOf;
+using sintence::MatchEntry;
+using sintence::MostPlayedChampion;
 
 namespace {
 
@@ -61,7 +61,7 @@ TEST_CASE("записи с пустым именем чемпиона не по�
 }
 
 TEST_CASE("регистр имени не нормализуется") {
-    // Нормализация — работа Champion из темы 1, а не этого слоя.
+    // Нормализация — работа Champion, а не этого слоя.
     const std::vector<MatchEntry> entries = {Entry("ahri"), Entry("Ahri")};
     const std::map<std::string, int> games = CountGamesByChampion(entries);
 

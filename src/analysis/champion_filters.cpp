@@ -2,99 +2,41 @@
 
 #include <algorithm>
 #include <iterator>
+#include <ranges>
 
-namespace course {
+namespace sintence {
 
 int CountChampionsWithEnoughData(const ChampionIndex& index) {
-    // TODO: сколько чемпионов набрали достаточно данных.
-    //
-    // ПОТОК ДАННЫХ
-    //   вход:   ChampionIndex — коробка с отчётами (тема 2)
-    //   обход:  index.ChampionNames() -> std::vector<std::string>
-    //           по каждому имени index.Find(name) -> const ChampionReport*
-    //   выход:  int
-    //
-    // API, который нужен:
-    //   std::ranges::count_if(диапазон, предикат)
-    //   report->HasEnoughData()           метод из темы 1
-    //
-    // ПОРЯДОК ДЕЙСТВИЙ
-    //   1. Взять имена: index.ChampionNames().
-    //   2. Один вызов std::ranges::count_if по этому вектору. Предикат —
-    //      лямбда, которая по имени находит отчёт и спрашивает его.
-    //      Лямбде нужен доступ к index — захвати его ПО ИМЕНИ: [&index].
-    //      Захват по ссылке здесь безопасен: алгоритм отработает
-    //      до выхода из функции, лямбда индекс не переживёт.
-    //   3. Find возвращает УКАЗАТЕЛЬ, и он может быть nullptr.
-    //      Здесь nullptr быть не должен (имена взяты из самого индекса),
-    //      но предикат всё равно обязан это проверить: «не должен» и
-    //      «не может» — разные вещи, а разыменование nullptr — UB.
-    //   4. count_if возвращает std::ptrdiff_t (64 бита), а функция
-    //      объявлена как int. Нужен static_cast<int>, иначе warning C4244
-    //      в каждой сборке — ровно та же, что была в champion_report.cpp.
-    (void)index;
-    return 0;
+    const std::vector<std::string> names = index.ChampionNames();
+    const auto count = std::ranges::count_if(names, [&index](const std::string& name) {
+        const ChampionReport* report = index.Find(name);
+        return report != nullptr && report->HasEnoughData();
+    });
+    return static_cast<int>(count);
 }
 
 std::vector<std::string> ChampionsWithMinGames(const ChampionIndex& index, int min_games) {
-    // TODO: имена чемпионов, у которых игр не меньше min_games.
-    //
-    // ПОТОК ДАННЫХ
-    //   вход:        индекс и порог
-    //   накопитель:  std::vector<std::string> под результат
-    //   выход:       он же
-    //
-    // API, который нужен:
-    //   std::ranges::copy_if(откуда, куда, предикат)
-    //   std::back_inserter(result)    «куда» для пустого вектора:
-    //                                 превращает запись в push_back
-    //   report->Games()               метод из темы 1
-    //
-    // ПОРЯДОК ДЕЙСТВИЙ
-    //   1. Завести пустой вектор под результат.
-    //   2. Один вызов std::ranges::copy_if: из ChampionNames() в
-    //      std::back_inserter(результат), предикат — лямбда с захватом
-    //      [&index, min_games]: индекс по ссылке, порог по значению (int
-    //      копируется даром).
-    //   3. Сравнение нестрогое: >= min_games, а не >. Это записано
-    //      в контракте в .h, и тест на ровно min_games его проверяет.
-    //   4. Отдельную ветку под min_games <= 0 писать не нужно: при таком
-    //      пороге условие >= истинно для всех, и все имена пройдут сами.
-    //      Проверь это рассуждением, прежде чем поверить.
-    //   5. Сортировать результат НЕ нужно: порядок ChampionNames()
-    //      и есть контракт этой функции.
-    (void)index;
-    (void)min_games;
-    return {};
+    const std::vector<std::string> names = index.ChampionNames();
+
+    std::vector<std::string> selected;
+    selected.reserve(names.size());
+    std::ranges::copy_if(names, std::back_inserter(selected),
+                         [&index, min_games](const std::string& name) {
+                             const ChampionReport* report = index.Find(name);
+                             return report != nullptr && report->Games() >= min_games;
+                         });
+    return selected;
 }
 
 bool HasChampionAboveWinrate(const ChampionIndex& index, double min_winrate) {
-    // TODO: есть ли чемпион с достаточными данными и винрейтом выше порога.
-    //
-    // ПОТОК ДАННЫХ
-    //   вход:   индекс и порог винрейта (0.0 ... 1.0)
-    //   выход:  bool
-    //
-    // API, который нужен:
-    //   std::ranges::any_of(диапазон, предикат)
-    //   report->Winrate()         доля от 0.0 до 1.0 (тема 1)
-    //   report->HasEnoughData()
-    //
-    // ПОРЯДОК ДЕЙСТВИЙ
-    //   1. Один вызов std::ranges::any_of по именам.
-    //   2. Предикат проверяет ОБА условия сразу: достаточно данных
-    //      И винрейт строго больше порога. Порядок в && важен для чтения:
-    //      сначала «имеем ли право делать вывод», потом сам вывод.
-    //   3. Строгое сравнение: ровно min_winrate — не выше порога.
-    //      Тест на границе это проверяет.
-    //
-    // Почему any_of, а не count_if != 0: any_of останавливается на первом
-    // подходящем элементе, count_if всегда проходит весь диапазон. На 50
-    // чемпионах разницы нет, но имя алгоритма ещё и говорит читателю,
-    // что именно тебя интересовало.
-    (void)index;
-    (void)min_winrate;
-    return false;
+    const std::vector<std::string> names = index.ChampionNames();
+    return std::ranges::any_of(names, [&index, min_winrate](const std::string& name) {
+        const ChampionReport* report = index.Find(name);
+        // Достаточность выборки проверяется до винрейта: 100% по двум играм
+        // не повод что-то советовать.
+        return report != nullptr && report->HasEnoughData() &&
+               report->Winrate() > min_winrate;
+    });
 }
 
-}  // namespace course
+}  // namespace sintence

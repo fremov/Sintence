@@ -8,10 +8,10 @@
 #include <utility>
 #include <vector>
 
-using course::FixtureMatchSource;
-using course::MatchEntry;
-using course::MatchLine;
-using course::MatchSource;
+using sintence::FixtureMatchSource;
+using sintence::MatchEntry;
+using sintence::MatchLine;
+using sintence::MatchSource;
 
 namespace {
 

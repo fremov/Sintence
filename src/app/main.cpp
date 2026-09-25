@@ -1,56 +1,43 @@
-// Точка входа. Файл твой: пиши, ломай, переписывай.
+// Точка входа: поднимает сервер данных и окно поверх игры.
 //
-//   cmake --build build --config Debug --target analyzer
-//   build\src\Debug\analyzer.exe
+//   cmake --build build --config Debug --target sintence
+//   build\src\Debug\sintence.exe
 //
-// Прошлая версия с таблицей: git show 912b154:src/app/main.cpp
+// Здесь только связывание готовых частей, без логики:
+//   LiveClientSource  — откуда берутся данные (data/)
+//   LiveApiServer     — отдаёт их интерфейсу по HTTP (app/)
+//   RunOverlay        — окно с WebView2, показывает web/dist (app/)
+//
+// Интерфейс правится в web/ и не требует пересборки C++:
+//   npm run build   — собрать в web/dist, окно подхватит при перезапуске
+//   npm run dev     — :5173 с горячей перезагрузкой, запросы к /api
+//                     проксируются сюда же
 
-#include <chrono>
-#include <iostream>
-#include <numeric>
+#include <cstdio>
 #include <print>
-#include <ranges>
-#include "file_match_source.h"
+#include <string>
+
+#include "live_api_server.h"
+#include "live_client_source.h"
+#include "overlay_window.h"
 
 int main() {
-    auto match =
-        course::FileMatchSource(ANALYZER_DEFAULT_DATA_DIR,
-                                "csZCcpsbfg3pwMdH7DlTxjw14mrcXuufMghn9QDGs1f0ua"
-                                "6X-HT120NA7POURMeO2sie4ujBzR07MQ");
-    if (!match.IsAvailable()) {
-        std::println("Return nullopt");
-        return 0;
-    }
-    const auto start = std::chrono::steady_clock::now();
-    auto matches = match.LoadMatches();
-    const auto end = std::chrono::steady_clock::now();
-    const auto elapsed_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
-            .count();
-    size_t count = 0;
-    for (const auto& match1 : matches) {
-        std::println(
-            "Match duration: {} Name {} kills {} death {} assist {} win {} "
-            "minions {}",
-            match1.line.duration_seconds, match1.champion_name,
-            match1.line.kills, match1.line.deaths, match1.line.assists,
-            match1.line.win, match1.line.minions);
-        ++count;
-    }
-    std::vector<int> kills =
-        matches | std::views::filter([](const course::MatchEntry& e) {
-            return e.line.kills > 10;
-        }) |
-        std::views::transform([](const course::MatchEntry& m) { return m.line.kills; }) 
-        |
-        std::ranges::to<std::vector>();
+    // Консоль здесь — журнал отладки. Буферизация означает, что при аварийном
+    // завершении последние сообщения (ровно те, что объясняют причину)
+    // теряются вместе с буфером.
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
 
-    for (auto k : kills) {
-        std::println("Total kills:  {}", k);
+    const sintence::LiveClientSource live_source;
+
+    sintence::LiveApiServer server(live_source, SINTENCE_WEB_DIR, 8777);
+    if (!server.Start()) {
+        std::println("не удалось занять порт {} — он уже кем-то занят", server.Port());
+        return 1;
     }
+    std::println("сервер данных: http://127.0.0.1:{}/api/live", server.Port());
+    std::println("игра {}", live_source.IsAvailable() ? "идёт" : "не запущена");
 
-    std::println("Count {}", count);
-    std::println("LoadMatches took {} ms", elapsed_ms);
-
-    return 0;
+    sintence::OverlayOptions options;
+    options.url = L"http://127.0.0.1:8777/";
+    return sintence::RunOverlay(options);
 }

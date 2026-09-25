@@ -7,12 +7,12 @@
 #include <utility>
 #include <vector>
 
-using course::ChampionIndex;
-using course::ChampionReport;
-using course::ChampionsWithMinGames;
-using course::CountChampionsWithEnoughData;
-using course::HasChampionAboveWinrate;
-using course::MatchLine;
+using sintence::ChampionIndex;
+using sintence::ChampionReport;
+using sintence::ChampionsWithMinGames;
+using sintence::CountChampionsWithEnoughData;
+using sintence::HasChampionAboveWinrate;
+using sintence::MatchLine;
 
 namespace {
 

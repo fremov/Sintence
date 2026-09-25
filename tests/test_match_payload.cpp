@@ -7,11 +7,11 @@
 #include <utility>
 #include <vector>
 
-using course::MatchPayload;
+using sintence::MatchPayload;
 
 namespace {
 
-// Кусок настоящего ответа Riot — в теме 8 через этот тип пойдёт он целиком.
+// Кусок настоящего ответа Riot — через этот тип пойдёт он целиком.
 const std::string kJson = R"({"championName":"Ahri","kills":10,"deaths":3,"assists":7})";
 
 }  // namespace
@@ -134,7 +134,7 @@ TEST_CASE("вектор payload'ов переживает расширение")
 }
 
 TEST_CASE("все геттеры доступны у const-объекта") {
-    // Возврат к теме 1: если этот тест не компилируется — где-то потерян const.
+    // Если этот тест не компилируется — где-то потерян const.
     MatchPayload mutable_payload(kJson);
     const MatchPayload& payload = mutable_payload;
 
