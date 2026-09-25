@@ -1,122 +1,124 @@
-# Sintence — статистика League of Legends на своём компьютере
+# Sintence — League of Legends stats on your own machine
 
-Десктопное приложение для Windows: показывает табло идущего матча оверлеем
-поверх игры и считает статистику по собственной истории матчей.
+A Windows desktop application: a live match scoreboard as an overlay on top of
+the game, plus statistics computed from your own match history.
 
-Всё работает локально. Данные идущего матча берутся у игрового клиента
-(Live Client Data API, `127.0.0.1:2999`, ключ не нужен), история матчей —
-из Riot API. Ни серверов, ни аккаунтов, ни телеметрии: файлы лежат на диске
-пользователя, ключ Riot не покидает машину.
+Everything runs locally. Live match data comes from the game client
+(Live Client Data API, `127.0.0.1:2999`, no key required); match history comes
+from the Riot API. No servers, no accounts, no telemetry: files stay on the
+user's disk and the Riot API key never leaves the machine.
 
 > Sintence isn't endorsed by Riot Games and doesn't reflect the views or
 > opinions of Riot Games or anyone officially involved in producing or managing
 > Riot Games properties. Riot Games and all associated properties are trademarks
 > or registered trademarks of Riot Games, Inc.
 
-**Личный проект, не open source.** Исходный код открыт для просмотра, но
-использование, копирование, изменение и распространение требуют письменного
-разрешения — подробности в `LICENSE`.
+**Personal project, not open source.** The source is public for review only;
+use, copying, modification and redistribution require written permission — see
+`LICENSE`.
 
-## Что уже работает
+## What works today
 
-**Оверлей идущего матча.** `PgDn` показывает и прячет панель по центру экрана:
-время матча, режим, карта, обе команды карточками — чемпион, Riot ID, роль,
-уровень, K/D/A, фарм и CS в минуту. Обновляется раз в секунду. Повторное
-нажатие `PgDn` убирает панель, выход из программы — `Ctrl+C` в консоли.
+**Live match overlay.** `PgDn` shows and hides a panel centred on the screen:
+game time, mode, map, and both teams as cards — champion, Riot ID, role, level,
+K/D/A, creep score and CS per minute. Refreshed once per second. Pressing `PgDn`
+again hides the panel; `Ctrl+C` in the console quits the program.
 
-**Разбор истории матчей.** Match-V5 из локальной выгрузки: агрегация по
-чемпионам, winrate, KDA, CS/min, топы и фильтры по объёму выборки.
+**Match history analysis.** Match-V5 data from a local dump: per-champion
+aggregation, win rate, KDA, CS/min, top lists and filters by sample size.
 
-Показывается только то, что игрок и так видит на экране. Скрытого состояния
-противника — кулдаунов, позиций на карте — Live Client Data API не отдаёт,
-и приложение на нём ничего не строит (`project/POLICY.md`).
+Only information the player already sees on screen is displayed. The Live Client
+Data API does not expose hidden enemy state — ability cooldowns, map positions —
+and the application builds nothing on top of it (`project/POLICY.md`).
 
-## Как устроено
+## How it fits together
 
 ```
 League (127.0.0.1:2999)
-        |  HTTPS, без ключа
+        |  HTTPS, no key
         v
-  LiveClientSource  ──►  LiveGame  ──►  HTTP-сервер 127.0.0.1:8777
+  LiveClientSource  ──►  LiveGame  ──►  HTTP server 127.0.0.1:8777
   (src/data)             (src/core)     (src/app)
                                               |  JSON
                                               v
-                                    Vue 3 в окне WebView2
+                                    Vue 3 inside a WebView2 window
                                               (web/)
 ```
 
-Слои и зависимости строго вниз: `app/ → analysis/ → core/`, `app/ → data/ → core/`.
-Ни один тип сторонней библиотеки (nlohmann, cpp-httplib, WebView2) не попадает
-в `core/` и `analysis/` — они видны только внутри `data/*.cpp` и `app/*.cpp`.
-Поэтому источник данных меняется без правки анализатора: за интерфейсом
-`MatchSource` одинаково живут файлы, Riot API и фикстуры тестов.
+Layers depend strictly downwards: `app/ → analysis/ → core/`,
+`app/ → data/ → core/`. No third-party type (nlohmann, cpp-httplib, WebView2)
+reaches `core/` or `analysis/` — they are visible only inside `data/*.cpp` and
+`app/*.cpp`. That is why swapping the data source requires no change to the
+analysis code: files, the Riot API and test fixtures all live behind the
+`MatchSource` interface.
 
-| Каталог | Что внутри |
+| Directory | Contents |
 |---|---|
-| `src/core/` | доменные типы: `Champion`, `ChampionReport`, `ChampionIndex`, `LiveGame` |
-| `src/data/` | адаптеры: чтение файлов, разбор JSON, Live Client Data API |
-| `src/analysis/` | метрики и агрегация над типами `core/` |
-| `src/app/` | точка входа, локальный HTTP-сервер, окно оверлея |
-| `web/` | интерфейс: Vue 3 + Vite + TypeScript |
-| `tests/` | весь набор тестов одним бинарником `sintence_tests` |
-| `project/` | решения по архитектуре, ограничения Riot, схема данных и фикстуры |
+| `src/core/` | domain types: `Champion`, `ChampionReport`, `ChampionIndex`, `LiveGame` |
+| `src/data/` | adapters: file reading, JSON parsing, Live Client Data API |
+| `src/analysis/` | metrics and aggregation over `core/` types |
+| `src/app/` | entry point, local HTTP server, overlay window |
+| `web/` | user interface: Vue 3 + Vite + TypeScript |
+| `tests/` | the whole suite as a single `sintence_tests` binary |
+| `project/` | architecture decisions, Riot constraints, data schema and fixtures |
 
-## Сборка
+## Build
 
-Нужны: **Visual Studio 2026** (MSVC 14.51+, C++23), **CMake ≥ 3.20**,
-**Node.js 20+**, **vcpkg**. WebView2 Runtime входит в Windows 11.
+Requires **Visual Studio 2026** (MSVC 14.51+, C++23), **CMake ≥ 3.20**,
+**Node.js 20+** and **vcpkg**. The WebView2 Runtime ships with Windows 11.
 
-Зависимости C++ ставятся сами по `vcpkg.json` при конфигурации:
-cpp-httplib (HTTP-клиент и сервер), OpenSSL, WebView2 SDK.
-`doctest` и `nlohmann/json` лежат заголовками в `third_party/`.
+C++ dependencies are installed automatically from `vcpkg.json` at configure
+time: cpp-httplib (HTTP client and server), OpenSSL, WebView2 SDK.
+`doctest` and `nlohmann/json` are header-only files in `third_party/`.
 
 ```powershell
-# интерфейс
+# interface
 cd web
 npm install
 npm run build
 cd ..
 
-# приложение
-cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<путь к vcpkg>/scripts/buildsystems/vcpkg.cmake
+# application
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<path to vcpkg>/scripts/buildsystems/vcpkg.cmake
 cmake --build build --config Debug
 ```
 
-Запуск — **от имени администратора**: без повышения прав Windows не поднимает
-окно поверх игры с анти-читом.
+Run it **as administrator**: without elevation Windows will not raise the window
+above a game protected by anti-cheat.
 
 ```powershell
 build\src\Debug\sintence.exe
 ```
 
-В игре должен стоять режим окна **«Без рамки»**: поверх эксклюзивного
-полноэкранного режима не отрисовывается ни одно обычное окно.
+The game must run in **Borderless** window mode: nothing draws on top of
+exclusive fullscreen.
 
-Собрать без запроса UAC (для отладки, оверлей поверх игры при этом не работает):
+Build without the UAC prompt (for debugging; the overlay will not appear above
+the game in this mode):
 
 ```powershell
 cmake -S . -B build -DSINTENCE_REQUIRE_ADMIN=OFF ...
 ```
 
-## Разработка интерфейса
+## Interface development
 
-Пересобирать C++ ради правки CSS не нужно:
+Editing CSS does not require rebuilding the C++ side:
 
 ```powershell
-build\src\Debug\sintence.exe   # отдаёт /api/live на порту 8777
-cd web && npm run dev          # http://localhost:5173, горячая перезагрузка
+build\src\Debug\sintence.exe   # serves /api/live on port 8777
+cd web && npm run dev          # http://localhost:5173, hot reload
 ```
 
-Vite проксирует `/api` в приложение, поэтому страница в браузере показывает
-настоящие данные идущего матча. Подробности — в `web/README.md`.
+Vite proxies `/api` to the application, so the page in the browser shows real
+data from the running match. Details in `web/README.md`.
 
-## Тесты
+## Tests
 
 ```powershell
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-Отдельная группа — флагами doctest, без пересборки:
+A single group can be run with doctest flags, without rebuilding:
 
 ```powershell
 build\tests\Debug\sintence_tests.exe --source-file="*live_client*"
@@ -124,22 +126,23 @@ build\tests\Debug\sintence_tests.exe --test-case="*winrate*"
 build\tests\Debug\sintence_tests.exe --list-test-cases
 ```
 
-Тесты не требуют ни сети, ни ключа, ни запущенной игры: они работают на
-фикстурах из `project/data/fixtures/`. Debug собирается с address sanitizer.
+Tests need no network, no API key and no running game: they work on the fixtures
+in `project/data/fixtures/`. Debug builds enable the address sanitizer.
 
-## Ключ Riot
+## Riot API key
 
-Ключ нужен только для истории матчей; оверлей работает без него.
+The key is only needed for match history; the overlay works without it.
 
-Ключ **никогда не попадает в репозиторий и в собранный бинарник**: он живёт
-в файле профиля пользователя и читается при запуске. Выгрузка матчей в локальные
-файлы делается скриптом `scripts/fetch_matches.py` (только стандартная библиотека
-Python, ни pip, ни зависимостей).
+The key **never enters the repository or the compiled binary**: it lives in a
+file in the user's profile directory and is read at startup. Match dumps are
+produced by `scripts/fetch_matches.py` (Python standard library only, no pip, no
+dependencies).
 
-Ограничения Riot, которые соблюдает приложение, — в `project/POLICY.md`.
+The Riot constraints the application honours are listed in `project/POLICY.md`.
 
-## Статус
+## Status
 
-Приложение в активной разработке. Готово: оверлей на живых данных, разбор
-Match-V5 и Live Client Data, агрегация по чемпионам. В работе: запросы к Riot API
-из самого приложения, кеш и соблюдение лимитов, история игроков текущего матча.
+Under active development. Done: the overlay on live data, Match-V5 and Live
+Client Data parsing, per-champion aggregation. In progress: Riot API requests
+from the application itself, caching and rate limiting, history of the players
+in the current match.
