@@ -13,6 +13,10 @@
 > Riot Games properties. Riot Games and all associated properties are trademarks
 > or registered trademarks of Riot Games, Inc.
 
+**Личный проект, не open source.** Исходный код открыт для просмотра, но
+использование, копирование, изменение и распространение требуют письменного
+разрешения — подробности в `LICENSE`.
+
 ## Что уже работает
 
 **Оверлей идущего матча.** `PgDn` показывает и прячет панель по центру экрана:

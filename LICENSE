@@ -1,0 +1,58 @@
+Copyright (c) 2026 Sintence. All rights reserved.
+
+PROPRIETARY SOFTWARE — ALL RIGHTS RESERVED
+
+This repository and its contents (the "Software") are made publicly visible for
+review and demonstration purposes only. Public visibility does not grant any
+license to the Software.
+
+No permission is granted to use, copy, modify, merge, publish, distribute,
+sublicense, sell, or create derivative works of the Software, in whole or in
+part, without the prior written permission of the copyright holder.
+
+You may:
+  - view the source code;
+  - fork the repository where GitHub's Terms of Service require it for the
+    purpose of submitting a contribution to this project.
+
+You may not:
+  - run the Software or any derivative of it for any purpose other than
+    evaluating this repository;
+  - redistribute the Software, modified or unmodified, in source or binary form;
+  - use any part of the source code in other projects.
+
+Third-party components retain their own licenses and are not covered by this
+notice: nlohmann/json and doctest in third_party/, and the dependencies declared
+in vcpkg.json and web/package.json.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHOR BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Sintence isn't endorsed by Riot Games and doesn't reflect the views or opinions
+of Riot Games or anyone officially involved in producing or managing Riot Games
+properties. Riot Games and all associated properties are trademarks or
+registered trademarks of Riot Games, Inc.
+
+---
+
+Авторские права (c) 2026 Sintence. Все права защищены.
+
+Проприетарное программное обеспечение. Репозиторий открыт для просмотра и
+демонстрации; открытая видимость не даёт никаких прав на использование.
+
+Запрещено без письменного разрешения правообладателя: использовать, копировать,
+изменять, распространять, сублицензировать, продавать программу и создавать
+производные работы, целиком или частично.
+
+Разрешено: читать исходный код и создавать форк, если это требуется правилами
+GitHub для отправки изменений в этот проект.
+
+Сторонние компоненты (nlohmann/json и doctest в third_party/, зависимости из
+vcpkg.json и web/package.json) распространяются по своим лицензиям и под это
+уведомление не подпадают.
+
+Программа предоставляется «как есть», без каких-либо гарантий.
