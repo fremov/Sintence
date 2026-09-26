@@ -14,8 +14,35 @@ namespace sintence {
 
 namespace {
 
+// Версия JSON-контракта. Поднимается, когда ответ меняется несовместимо
+// (поле удалено или сменило тип). Новые поля версию не поднимают: схемы
+// интерфейса к лишним полям терпимы. Интерфейс читает её из /api/health
+// и честно говорит «обнови sintence.exe», а не рисует пустое табло.
+constexpr int kApiVersion = 2;
+
 const char* TeamName(Team team) {
     return team == Team::Order ? "ORDER" : "CHAOS";
+}
+
+// Линия, которую понимает пак. "NONE" и "" приходят из Practice Tool,
+// пользовательских игр и режимов без выбора линии.
+bool IsLaneRole(std::string_view position) {
+    return position == "TOP" || position == "JUNGLE" || position == "MIDDLE" ||
+           position == "BOTTOM" || position == "UTILITY";
+}
+
+nlohmann::json RunesToJson(const LiveRunes& runes) {
+    return {
+        {"keystone", runes.keystone},
+        {"keystoneId", runes.keystone_id},
+        {"primaryTree", runes.primary_tree},
+        {"primaryTreeId", runes.primary_tree_id},
+        {"secondaryTree", runes.secondary_tree},
+        {"secondaryTreeId", runes.secondary_tree_id},
+        {"minorRunes", runes.minor_runes},
+        {"minorRuneIds", runes.minor_rune_ids},
+        {"shardIds", runes.shard_ids},
+    };
 }
 
 nlohmann::json VariantsToJson(const std::vector<PreferenceVariant>& variants) {
@@ -31,14 +58,23 @@ nlohmann::json VariantsToJson(const std::vector<PreferenceVariant>& variants) {
         if (!variant.steps.empty()) {
             item["steps"] = variant.steps;
         }
+        if (!variant.item_ids.empty()) {
+            item["itemIds"] = variant.item_ids;
+        }
         if (variant.page) {
             item["page"] = {
                 {"keystone", variant.page->keystone},
+                {"keystoneId", variant.page->keystone_id},
                 {"primaryTree", variant.page->primary_tree},
+                {"primaryTreeId", variant.page->primary_tree_id},
                 {"primary", variant.page->primary},
+                {"primaryIds", variant.page->primary_ids},
                 {"secondaryTree", variant.page->secondary_tree},
+                {"secondaryTreeId", variant.page->secondary_tree_id},
                 {"secondary", variant.page->secondary},
+                {"secondaryIds", variant.page->secondary_ids},
                 {"shards", variant.page->shards},
+                {"shardIds", variant.page->shard_ids},
             };
         }
         array.push_back(std::move(item));
@@ -85,8 +121,14 @@ std::string LiveGameToJson(const LiveGame& game) {
             });
         }
 
+        auto spells = nlohmann::json::array();
+        for (const LiveSummonerSpell& spell : player.summoner_spells) {
+            spells.push_back({{"key", spell.key}, {"name", spell.name}});
+        }
+
         players.push_back({
             {"championName", player.champion_name},
+            {"championKey", player.champion_key},
             {"riotId", player.riot_id},
             {"position", player.position},
             {"team", TeamName(player.team)},
@@ -98,6 +140,8 @@ std::string LiveGameToJson(const LiveGame& game) {
             {"isBot", player.is_bot},
             {"isDead", player.is_dead},
             {"items", std::move(items)},
+            {"runes", RunesToJson(player.runes)},
+            {"summonerSpells", std::move(spells)},
         });
     }
     doc["players"] = std::move(players);
@@ -109,6 +153,7 @@ std::string LiveGameToJson(const LiveGame& game) {
         for (const LiveAbility& ability : active.abilities) {
             abilities.push_back({
                 {"slot", ability.slot},
+                {"id", ability.id},
                 {"name", ability.name},
                 {"level", ability.level},
             });
@@ -119,13 +164,7 @@ std::string LiveGameToJson(const LiveGame& game) {
             {"level", active.level},
             {"currentGold", active.current_gold},
             {"abilities", std::move(abilities)},
-            {"runes",
-             {
-                 {"keystone", active.runes.keystone},
-                 {"primaryTree", active.runes.primary_tree},
-                 {"secondaryTree", active.runes.secondary_tree},
-                 {"minorRunes", active.runes.minor_runes},
-             }},
+            {"runes", RunesToJson(active.runes)},
         };
     } else {
         // null, а не пропуск ключа: наблюдатель и реплей — рабочие режимы,
@@ -212,6 +251,26 @@ int LiveApiServer::Port() const {
 }
 
 bool LiveApiServer::Start() {
+    // Что умеет этот запуск. Интерфейс спрашивает один раз при старте:
+    // версия контракта и какие функции включены, чтобы не выяснять это
+    // по кодам 501 на каждом эндпоинте.
+    impl_->server.Get("/api/health", [this](const httplib::Request&,
+                                            httplib::Response& response) {
+        response.set_header("Access-Control-Allow-Origin", "*");
+        nlohmann::json doc = {
+            {"apiVersion", kApiVersion},
+            {"profiles", impl_->profiles != nullptr},
+            {"preferences", impl_->pack != nullptr},
+            {"game", impl_->source.IsAvailable()},
+        };
+        if (impl_->pack != nullptr) {
+            doc["pack"] = {{"patch", impl_->pack->Patch()}, {"region", impl_->pack->Region()}};
+        } else {
+            doc["pack"] = nullptr;
+        }
+        response.set_content(doc.dump(), "application/json");
+    });
+
     impl_->server.Get("/api/live", [this](const httplib::Request&, httplib::Response& response) {
         // Заголовок нужен только режиму разработки (vite на :5173 — другой
         // origin). В собранном виде фронт раздаётся этим же сервером,
@@ -333,6 +392,18 @@ bool LiveApiServer::Start() {
             }
         }
 
+        // Роль. Клиент назначает её только в матчах с выбором линии;
+        // в Practice Tool и пользовательских играх приходит "NONE". Тогда
+        // берём ту, на которой чемпиона играют чаще всего, — иначе поиск
+        // по паку не найдёт ничего, и советов не будет вовсе.
+        // Откуда роль, уезжает во фронт: угаданную нельзя выдавать за факт.
+        std::string role = me->position;
+        std::string role_source = "client";
+        if (!IsLaneRole(role)) {
+            role = impl_->pack->MainRole(me->champion_key);
+            role_source = role.empty() ? "none" : "pack";
+        }
+
         nlohmann::json doc;
         doc["patch"] = impl_->pack->Patch();
         doc["region"] = impl_->pack->Region();
@@ -340,7 +411,8 @@ bool LiveApiServer::Start() {
             {"riotId", me_id},
             {"champion", me->champion_key},
             {"championName", me->champion_name},
-            {"role", me->position},
+            {"role", role.empty() ? me->position : role},
+            {"roleSource", role_source},
         };
 
         // Противники: первым тот, с кем стоишь на линии, — против него
@@ -350,7 +422,7 @@ bool LiveApiServer::Start() {
         const LivePlayer* laner = nullptr;
         for (const LivePlayer& player : game->players) {
             if (player.team != me->team && !player.champion_key.empty() &&
-                !player.position.empty() && player.position == me->position) {
+                !role.empty() && player.position == role) {
                 laner = &player;
                 break;
             }
@@ -358,7 +430,7 @@ bool LiveApiServer::Start() {
 
         const auto append = [&](const LivePlayer& enemy, bool lane) {
             const PreferenceBucket* bucket = impl_->pack->Lookup(
-                me->champion_key, me->position, enemy.champion_key, tier);
+                me->champion_key, role, enemy.champion_key, tier);
             if (bucket == nullptr) {
                 return;
             }

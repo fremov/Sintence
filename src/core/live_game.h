@@ -37,16 +37,34 @@ struct LiveItem {
 // Способность активного игрока. Уровень — то, сколько очков в неё вложено.
 struct LiveAbility {
     std::string slot;  // "Q", "W", "E", "R", "Passive"
+    std::string id;    // "AhriQ", "VladimirBloodGorged" — ключ Data Dragon
     std::string name;  // "Death Lotus"
     int level = 0;     // у Passive всегда 0
 };
 
-// Страница рун активного игрока.
+// Руны. Названия локализованы языком клиента, id — числовые perk id Riot:
+// по ним интерфейс находит иконки и названия в Data Dragon.
+//
+// У активного игрока заполнено всё. У остальных Live Client отдаёт только
+// ключевую руну и два дерева — ровно то, что видно на табло по Tab, —
+// поэтому minor_* и shard_ids у них пустые.
 struct LiveRunes {
     std::string keystone;        // "Electrocute"
     std::string primary_tree;    // "Domination"
     std::string secondary_tree;  // "Precision"
     std::vector<std::string> minor_runes;  // пять малых рун, порядок Riot
+
+    int keystone_id = 0;        // 8112
+    int primary_tree_id = 0;    // 8100
+    int secondary_tree_id = 0;  // 8200
+    std::vector<int> minor_rune_ids;  // параллельно minor_runes
+    std::vector<int> shard_ids;       // осколки статов: 5008, 5008, 5001
+};
+
+// Заклинание призывателя. Видно у всех на табло.
+struct LiveSummonerSpell {
+    std::string key;   // "SummonerFlash" — ключ Data Dragon
+    std::string name;  // "Скачок" — как показывает клиент
 };
 
 // Активный игрок — тот, за кем клиент. Про него API отдаёт то, чего нет
@@ -87,6 +105,11 @@ struct LivePlayer {
     // Инвентарь. Приходит в /playerlist и в /allgamedata, поэтому известен
     // про ВСЕХ участников, а не только про активного игрока.
     std::vector<LiveItem> items;
+
+    // Ключевая руна и деревья (без малых рун) и два заклинания призывателя:
+    // и то и другое показывает табло по Tab.
+    LiveRunes runes;
+    std::vector<LiveSummonerSpell> summoner_spells;
 };
 
 // Общие сведения о матче: ровно то, что отдаёт /liveclientdata/gamestats.

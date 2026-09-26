@@ -1,6 +1,8 @@
 #include "doctest.h"
 #include "preference_pack.h"
 
+#include <vector>
+
 using sintence::PreferenceBucket;
 using sintence::PreferencePack;
 
@@ -238,4 +240,93 @@ TEST_CASE("Lookup: пустые бакеты по всей лестнице — 
     const auto pack = PreferencePack::LoadFromJson(kAllEmpty);
     REQUIRE(pack.has_value());
     CHECK(pack->Lookup("Caitlyn", "BOTTOM", "MissFortune", "ALL") == nullptr);
+}
+
+TEST_CASE("PreferencePack: третья схема несёт id рун и предметов, вторая читается без них") {
+    constexpr const char* kV3 = R"({
+      "schemaVersion": 3, "region": "RU", "patch": "16.19",
+      "buckets": {
+        "Ahri|MIDDLE|ANY|ALL": {
+          "champion": "Ahri", "role": "MIDDLE", "opponent": "ANY", "tier": "ALL",
+          "games": 300, "winrate": 0.51,
+          "runePages": [{
+            "name": "Electrocute", "games": 120, "share": 0.4, "winrate": 0.52,
+            "winrateLow": 0.43,
+            "page": {
+              "keystone": "Electrocute", "keystoneId": 8112,
+              "primaryTree": "Domination", "primaryTreeId": 8100,
+              "primary": ["Taste of Blood", "Grisly Mementos", "Ultimate Hunter"],
+              "primaryIds": [8139, 8140, 8106],
+              "secondaryTree": "Sorcery", "secondaryTreeId": 8200,
+              "secondary": ["Nullifying Orb", "Gathering Storm"],
+              "secondaryIds": [8224, 8236],
+              "shards": ["Adaptive Force", "Adaptive Force", "Health Scaling"],
+              "shardIds": [5008, 5008, 5001]
+            }
+          }],
+          "skillOrders": [],
+          "itemChains": [{
+            "name": "Luden's Echo → Shadowflame", "steps": ["Luden's Echo", "Shadowflame"],
+            "itemIds": [6655, 4645],
+            "games": 40, "share": 0.13, "winrate": 0.55, "winrateLow": 0.4
+          }]
+        }
+      }
+    })";
+
+    const auto pack = PreferencePack::LoadFromJson(kV3);
+    REQUIRE(pack.has_value());
+    const PreferenceBucket* bucket = pack->Lookup("Ahri", "MIDDLE", "Zed", "GOLD");
+    REQUIRE(bucket != nullptr);
+
+    REQUIRE(bucket->rune_pages.size() == 1);
+    const auto& page = *bucket->rune_pages[0].page;
+    CHECK(page.keystone_id == 8112);
+    CHECK(page.primary_tree_id == 8100);
+    CHECK(page.primary_ids == std::vector<int>{8139, 8140, 8106});
+    CHECK(page.secondary_tree_id == 8200);
+    CHECK(page.secondary_ids == std::vector<int>{8224, 8236});
+    CHECK(page.shard_ids == std::vector<int>{5008, 5008, 5001});
+
+    REQUIRE(bucket->item_chains.size() == 1);
+    CHECK(bucket->item_chains[0].item_ids == std::vector<int>{6655, 4645});
+
+    // Пак второй схемы по-прежнему грузится — просто без id.
+    const auto v2 = PreferencePack::LoadFromJson(kPack);
+    REQUIRE(v2.has_value());
+    const PreferenceBucket* old = v2->Lookup("Vladimir", "MIDDLE", "Yasuo", "EMERALD");
+    REQUIRE(old != nullptr);
+    CHECK(old->rune_pages[0].page->keystone_id == 0);
+    CHECK(old->item_chains[0].item_ids.empty());
+
+    // Схема из будущего — отказ.
+    CHECK_FALSE(PreferencePack::LoadFromJson(
+                    R"({"schemaVersion": 4, "patch": "16.20", "buckets": {}})").has_value());
+}
+
+TEST_CASE("MainRole: самая частая роль по бакету «против всех, все ранги»") {
+    // Practice Tool приходит с position "NONE": роль берётся из пака.
+    constexpr const char* kRoles = R"({
+      "schemaVersion": 3, "region": "RU", "patch": "16.19",
+      "buckets": {
+        "Vladimir|MIDDLE|ANY|ALL": {"champion": "Vladimir", "role": "MIDDLE",
+          "opponent": "ANY", "tier": "ALL", "games": 95, "winrate": 0.5,
+          "runePages": [], "itemChains": [], "skillOrders": []},
+        "Vladimir|TOP|ANY|ALL": {"champion": "Vladimir", "role": "TOP",
+          "opponent": "ANY", "tier": "ALL", "games": 40, "winrate": 0.5,
+          "runePages": [], "itemChains": [], "skillOrders": []},
+        "Vladimir|TOP|ANY|DIAMOND": {"champion": "Vladimir", "role": "TOP",
+          "opponent": "ANY", "tier": "DIAMOND", "games": 500, "winrate": 0.5,
+          "runePages": [], "itemChains": [], "skillOrders": []}
+      }
+    })";
+
+    const auto pack = PreferencePack::LoadFromJson(kRoles);
+    REQUIRE(pack.has_value());
+
+    // Корзина DIAMOND с большим числом игр не в счёт: сравниваются только
+    // широкие бакеты, иначе редкая корзина перетягивала бы роль.
+    CHECK(pack->MainRole("Vladimir") == "MIDDLE");
+    CHECK(pack->MainRole("Teemo").empty());
+    CHECK(PreferencePack().MainRole("Vladimir").empty());
 }

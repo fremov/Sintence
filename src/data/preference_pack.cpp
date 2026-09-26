@@ -12,9 +12,27 @@
 namespace sintence {
 
 namespace {
-// Версия формата пака. Меняется вместе со схемой в build_pack.py.
-// 2: матчапы, страницы рун, цепочки предметов.
-constexpr int kSchemaVersion = 2;
+// Версии формата пака, которые умеем читать. Меняется вместе со схемой
+// в build_pack.py.
+//   2: матчапы, страницы рун, цепочки предметов;
+//   3: плюс числовые id рун и предметов — ради иконок и локализации.
+// Третья — надмножество второй, поэтому старый пак читается как есть,
+// просто без id.
+constexpr int kMinSchemaVersion = 2;
+constexpr int kMaxSchemaVersion = 3;
+
+std::vector<int> ParseInts(const nlohmann::json& parent, std::string_view key) {
+    std::vector<int> values;
+    if (!parent.contains(key) || !parent[key].is_array()) {
+        return values;
+    }
+    for (const auto& raw : parent[key]) {
+        if (raw.is_number_integer()) {
+            values.push_back(raw.get<int>());
+        }
+    }
+    return values;
+}
 
 std::vector<std::string> ParseStrings(const nlohmann::json& parent,
                                       std::string_view key) {
@@ -43,6 +61,12 @@ std::optional<RunePage> ParsePage(const nlohmann::json& parent) {
     page.primary = ParseStrings(raw, "primary");
     page.secondary = ParseStrings(raw, "secondary");
     page.shards = ParseStrings(raw, "shards");
+    page.keystone_id = GetInt(raw, "keystoneId").value_or(0);
+    page.primary_tree_id = GetInt(raw, "primaryTreeId").value_or(0);
+    page.primary_ids = ParseInts(raw, "primaryIds");
+    page.secondary_tree_id = GetInt(raw, "secondaryTreeId").value_or(0);
+    page.secondary_ids = ParseInts(raw, "secondaryIds");
+    page.shard_ids = ParseInts(raw, "shardIds");
 
     // Страница без ключевой руны или без малых — не страница:
     // повторить её игрок не сможет.
@@ -73,6 +97,7 @@ std::vector<PreferenceVariant> ParseVariants(const nlohmann::json& parent,
         variant.winrate = GetDouble(raw, "winrate").value_or(0.0);
         variant.winrate_low = GetDouble(raw, "winrateLow").value_or(0.0);
         variant.steps = ParseStrings(raw, "steps");
+        variant.item_ids = ParseInts(raw, "itemIds");
         variant.page = ParsePage(raw);
         variants.push_back(std::move(variant));
     }
@@ -118,7 +143,8 @@ std::optional<PreferencePack> PreferencePack::LoadFromJson(std::string_view json
 
     // Чужая версия формата — отказ целиком. Пак, разобранный наполовину,
     // показал бы правдоподобную чушь, и это хуже пустого места.
-    if (GetInt(doc, "schemaVersion").value_or(0) != kSchemaVersion) {
+    const int schema = GetInt(doc, "schemaVersion").value_or(0);
+    if (schema < kMinSchemaVersion || schema > kMaxSchemaVersion) {
         return std::nullopt;
     }
     if (!doc.contains("buckets") || !doc["buckets"].is_object()) {
@@ -147,6 +173,16 @@ std::optional<PreferencePack> PreferencePack::LoadFromJson(std::string_view json
 
         if (bucket.champion.empty() || bucket.role.empty()) {
             continue;
+        }
+
+        // Самая частая роль считается по самому широкому бакету:
+        // «против всех, все ранги» есть у каждой пары чемпион+роль,
+        // прошедшей порог, и игр в нём больше всего.
+        if (bucket.opponent == "ANY" && bucket.tier == "ALL") {
+            auto& best = pack.main_roles_[bucket.champion];
+            if (bucket.games > best.second) {
+                best = {bucket.role, bucket.games};
+            }
         }
         pack.buckets_.emplace(key, std::move(bucket));
     }
@@ -183,6 +219,11 @@ std::optional<PreferencePack> PreferencePack::LoadFromDirectory(const std::strin
         return std::nullopt;
     }
     return LoadFromFile((std::filesystem::path(dir) / *file).string());
+}
+
+std::string PreferencePack::MainRole(std::string_view champion) const {
+    const auto found = main_roles_.find(std::string(champion));
+    return found == main_roles_.end() ? std::string() : found->second.first;
 }
 
 const PreferenceBucket* PreferencePack::Lookup(std::string_view champion,

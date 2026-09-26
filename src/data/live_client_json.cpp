@@ -6,6 +6,72 @@
 
 namespace sintence {
 
+namespace {
+
+// Имя и id руны или дерева лежат во вложенном объекте:
+//   "keystone": {"displayName": "Электрошок", "id": 8112, ...}
+std::string RuneName(const nlohmann::json& parent, std::string_view key) {
+    if (!parent.contains(key) || !parent[key].is_object()) {
+        return {};
+    }
+    return GetString(parent[key], "displayName").value_or("");
+}
+
+int RuneId(const nlohmann::json& parent, std::string_view key) {
+    if (!parent.contains(key) || !parent[key].is_object()) {
+        return 0;
+    }
+    return GetInt(parent[key], "id").value_or(0);
+}
+
+// Ключевая руна и деревья — общая часть рун активного игрока и табло.
+void ParseRuneHeader(const nlohmann::json& runes, LiveRunes& out) {
+    out.keystone = RuneName(runes, "keystone");
+    out.keystone_id = RuneId(runes, "keystone");
+    out.primary_tree = RuneName(runes, "primaryRuneTree");
+    out.primary_tree_id = RuneId(runes, "primaryRuneTree");
+    out.secondary_tree = RuneName(runes, "secondaryRuneTree");
+    out.secondary_tree_id = RuneId(runes, "secondaryRuneTree");
+}
+
+// "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName" -> "SummonerFlash".
+// Нелокализованный ключ есть только внутри rawDisplayName, а Data Dragon
+// знает заклинания именно по нему.
+std::string SummonerSpellKey(std::string_view raw) {
+    constexpr std::string_view prefix = "GeneratedTip_SummonerSpell_";
+    constexpr std::string_view suffix = "_DisplayName";
+    if (!raw.starts_with(prefix) || !raw.ends_with(suffix) ||
+        raw.size() <= prefix.size() + suffix.size()) {
+        return {};
+    }
+    raw.remove_prefix(prefix.size());
+    raw.remove_suffix(suffix.size());
+    return std::string(raw);
+}
+
+std::vector<LiveSummonerSpell> ParseSummonerSpells(const nlohmann::json& player) {
+    std::vector<LiveSummonerSpell> spells;
+    if (!player.contains("summonerSpells") || !player["summonerSpells"].is_object()) {
+        return spells;
+    }
+    const auto& raw = player["summonerSpells"];
+    for (const std::string_view slot : {"summonerSpellOne", "summonerSpellTwo"}) {
+        if (!raw.contains(slot) || !raw[slot].is_object()) {
+            continue;
+        }
+        LiveSummonerSpell spell;
+        spell.name = GetString(raw[slot], "displayName").value_or("");
+        spell.key = SummonerSpellKey(GetString(raw[slot], "rawDisplayName").value_or(""));
+        if (spell.name.empty() && spell.key.empty()) {
+            continue;
+        }
+        spells.push_back(std::move(spell));
+    }
+    return spells;
+}
+
+}  // namespace
+
 std::optional<std::vector<LivePlayer>> ParseLivePlayers(
     std::string_view json_text) {
     std::vector<LivePlayer> live_player_stats;
@@ -104,6 +170,11 @@ std::optional<std::vector<LivePlayer>> ParseLivePlayers(
             }
         }
 
+        if (p.contains("runes") && p["runes"].is_object()) {
+            ParseRuneHeader(p["runes"], player.runes);
+        }
+        player.summoner_spells = ParseSummonerSpells(p);
+
         live_player_stats.push_back(std::move(player));
     }
 
@@ -153,20 +224,13 @@ std::optional<LiveAbility> ParseAbility(const nlohmann::json& abilities,
 
     LiveAbility ability;
     ability.slot = std::string(slot);
+    ability.id = GetString(raw, "id").value_or("");
     ability.name = GetString(raw, "displayName").value_or("");
     ability.level = GetInt(raw, "abilityLevel").value_or(0);
     if (ability.name.empty()) {
         return std::nullopt;
     }
     return ability;
-}
-
-// Имя дерева или руны лежит во вложенном объекте под displayName.
-std::string RuneName(const nlohmann::json& parent, std::string_view key) {
-    if (!parent.contains(key) || !parent[key].is_object()) {
-        return {};
-    }
-    return GetString(parent[key], "displayName").value_or("");
 }
 
 }  // namespace
@@ -220,9 +284,7 @@ std::optional<LiveGame> ParseAllGameData(std::string_view json_text) {
 
     if (raw_active.contains("fullRunes") && raw_active["fullRunes"].is_object()) {
         const auto& runes = raw_active["fullRunes"];
-        active.runes.keystone = RuneName(runes, "keystone");
-        active.runes.primary_tree = RuneName(runes, "primaryRuneTree");
-        active.runes.secondary_tree = RuneName(runes, "secondaryRuneTree");
+        ParseRuneHeader(runes, active.runes);
 
         if (runes.contains("generalRunes") && runes["generalRunes"].is_array()) {
             for (const auto& rune : runes["generalRunes"]) {
@@ -230,12 +292,28 @@ std::optional<LiveGame> ParseAllGameData(std::string_view json_text) {
                     continue;
                 }
                 auto name = GetString(rune, "displayName").value_or("");
-                if (name.empty() || name == active.runes.keystone) {
+                const int id = GetInt(rune, "id").value_or(0);
+                if (name.empty() || (id != 0 && id == active.runes.keystone_id) ||
+                    name == active.runes.keystone) {
                     // generalRunes начинается с keystone — второй раз
                     // показывать его незачем.
                     continue;
                 }
                 active.runes.minor_runes.push_back(std::move(name));
+                active.runes.minor_rune_ids.push_back(id);
+            }
+        }
+
+        // Осколки статов: названий у них в ответе нет, только id и
+        // rawDescription. Интерфейсу id достаточно.
+        if (runes.contains("statRunes") && runes["statRunes"].is_array()) {
+            for (const auto& shard : runes["statRunes"]) {
+                if (!shard.is_object()) {
+                    continue;
+                }
+                if (const auto id = GetInt(shard, "id")) {
+                    active.runes.shard_ids.push_back(*id);
+                }
             }
         }
     }

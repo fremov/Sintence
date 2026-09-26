@@ -226,3 +226,75 @@ TEST_CASE("ParseAllGameData: нет rawChampionName — ключ пустой, �
     REQUIRE(game->players.size() == 1);
     CHECK(game->players[0].champion_key.empty());
 }
+
+TEST_CASE("ParseAllGameData: id способностей, рун и осколков активного игрока") {
+    const auto game = ParseAllGameData(kAllGameData);
+
+    REQUIRE(game.has_value());
+    REQUIRE(game->active_player.has_value());
+    const auto& active = *game->active_player;
+
+    REQUIRE(active.abilities.size() == 5);
+    CHECK(active.abilities[0].id == "ZedQ");
+    CHECK(active.abilities[4].id == "ZedP");
+
+    CHECK(active.runes.keystone_id == 8112);
+    CHECK(active.runes.primary_tree_id == 8100);
+    CHECK(active.runes.secondary_tree_id == 8000);
+    // Ключевая руна в generalRunes первой, но в малые не попадает.
+    REQUIRE(active.runes.minor_rune_ids.size() == 5);
+    CHECK(active.runes.minor_rune_ids.front() == 8143);
+    CHECK(active.runes.minor_rune_ids.size() == active.runes.minor_runes.size());
+    REQUIRE(active.runes.shard_ids.size() == 1);
+    CHECK(active.runes.shard_ids[0] == 5008);
+}
+
+TEST_CASE("ParseAllGameData: руны и заклинания призывателя у всех игроков") {
+    // У чужих Live Client отдаёт только ключевую руну и деревья — то,
+    // что видно на табло по Tab. Малых рун у них нет и быть не должно.
+    constexpr const char* kWithRunes = R"({
+      "allPlayers": [
+        {"championName": "Кай'Са", "rawChampionName": "game_character_displayname_Kaisa",
+         "riotId": "Kaisa#BOT", "team": "ORDER", "items": [],
+         "runes": {
+           "keystone": {"displayName": "Решительное наступление", "id": 8005},
+           "primaryRuneTree": {"displayName": "Точность", "id": 8000},
+           "secondaryRuneTree": {"displayName": "Колдовство", "id": 8200}
+         },
+         "summonerSpells": {
+           "summonerSpellOne": {"displayName": "Барьер",
+             "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerBarrier_DisplayName"},
+           "summonerSpellTwo": {"displayName": "Скачок",
+             "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"}
+         },
+         "scores": {"assists": 0, "creepScore": 0, "deaths": 0, "kills": 0, "wardScore": 0.0}},
+        {"championName": "Zed", "riotId": "a#1", "team": "CHAOS", "items": [],
+         "summonerSpells": {"summonerSpellOne": {"displayName": "???", "rawDisplayName": "broken"}},
+         "scores": {"assists": 0, "creepScore": 0, "deaths": 0, "kills": 0, "wardScore": 0.0}}
+      ],
+      "gameData": {"gameMode": "PRACTICETOOL", "gameTime": 10.0, "mapName": "Map11"}
+    })";
+
+    const auto game = ParseAllGameData(kWithRunes);
+
+    REQUIRE(game.has_value());
+    REQUIRE(game->players.size() == 2);
+
+    const auto& kaisa = game->players[0];
+    CHECK(kaisa.runes.keystone == "Решительное наступление");
+    CHECK(kaisa.runes.keystone_id == 8005);
+    CHECK(kaisa.runes.primary_tree_id == 8000);
+    CHECK(kaisa.runes.secondary_tree_id == 8200);
+    CHECK(kaisa.runes.minor_rune_ids.empty());
+    REQUIRE(kaisa.summoner_spells.size() == 2);
+    CHECK(kaisa.summoner_spells[0].key == "SummonerBarrier");
+    CHECK(kaisa.summoner_spells[0].name == "Барьер");
+    CHECK(kaisa.summoner_spells[1].key == "SummonerFlash");
+
+    // Рун нет — нули; ключ заклинания не разобрался — пустой, имя остаётся.
+    const auto& zed = game->players[1];
+    CHECK(zed.runes.keystone_id == 0);
+    REQUIRE(zed.summoner_spells.size() == 1);
+    CHECK(zed.summoner_spells[0].key.empty());
+    CHECK(zed.summoner_spells[0].name == "???");
+}

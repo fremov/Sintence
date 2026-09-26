@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 // data/preference_pack — предпочтения по чемпионам, посчитанные заранее.
@@ -35,6 +36,16 @@ struct RunePage {
     std::string secondary_tree;
     std::vector<std::string> secondary;  // две малых дополнительного
     std::vector<std::string> shards;     // атака, гибкий, защита
+
+    // Те же руны числовыми perk id (схема пака 3+). По ним интерфейс берёт
+    // иконки и названия на языке клиента: имена в паке английские.
+    // В паке второй схемы id нет — векторы пустые, нули.
+    int keystone_id = 0;
+    int primary_tree_id = 0;
+    std::vector<int> primary_ids;
+    int secondary_tree_id = 0;
+    std::vector<int> secondary_ids;
+    std::vector<int> shard_ids;
 };
 
 // Один вариант: «так играют N раз, доля столько-то, винрейт такой-то».
@@ -52,6 +63,10 @@ struct PreferenceVariant {
     // Цепочка: порядок повышения способностей ("Q","E","W"...) или
     // предметов в порядке покупки. Пусто у вариантов-страниц рун.
     std::vector<std::string> steps;
+
+    // Id предметов цепочки, параллельно steps (схема пака 3+).
+    // У порядка прокачки и у страниц рун пусто.
+    std::vector<int> item_ids;
 
     // Заполнена только у страниц рун.
     std::optional<RunePage> page;
@@ -107,6 +122,14 @@ public:
                                    std::string_view opponent,
                                    std::string_view tier) const;
 
+    // Роль, на которой чемпиона играют чаще всего, по бакетам «против всех,
+    // все ранги». Пустая строка — чемпиона в паке нет.
+    //
+    // Нужна там, где клиент роль не назначает: Practice Tool, пользовательские
+    // игры, обычные игры без выбора линии приходят с position "NONE" или "".
+    // Без неё Lookup искал бы бакет "Vladimir|NONE|..." и не находил ничего.
+    std::string MainRole(std::string_view champion) const;
+
     // Тир игрока ("EMERALD", "GRANDMASTER") -> корзина пака.
     // Корзины укрупнённые: по отдельному дивизиону выборка расползается,
     // а сборки в Изумруде I и IV не различаются.
@@ -119,6 +142,8 @@ public:
 private:
     // Ключ — "Vladimir|MIDDLE|Yasuo|EMERALD", как его пишет build_pack.py.
     std::unordered_map<std::string, PreferenceBucket> buckets_;
+    // Чемпион -> (роль, игр) самой частой роли. Строится при загрузке.
+    std::unordered_map<std::string, std::pair<std::string, int>> main_roles_;
     std::string patch_;
     std::string region_;
 };

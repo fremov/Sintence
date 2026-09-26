@@ -118,9 +118,17 @@ CREATE TABLE IF NOT EXISTS purchases (
 );
 """
 
-# Сколько покупок хранить на игрока. Первый предмет и цепочка из трёх-четырёх
-# видны в первой дюжине; дальше идут расходники и добивка.
-MAX_PURCHASES = 12
+# Сколько покупок хранить на игрока.
+#
+# Было 12, и этого не хватало: стартовый набор, зелья и компоненты съедают
+# первую дюжину целиком, и законченный предмет в неё попадал в лучшем случае
+# один. Цепочек из двух-трёх предметов в паке не было почти ни у кого.
+# Сорок покупок покрывают полную сборку в игре на 35 минут.
+MAX_PURCHASES = 40
+
+# has_timeline в matches: 0 — нет, 1 — старое извлечение с обрезанными
+# покупками, 2 — полное. --refetch-timelines докачивает единицы до двоек.
+TIMELINE_FULL = 2
 
 # Сколько повышений способностей хранить. Девять — это порядок до уровня 9,
 # в нём видно и первую способность, и очередь максимизации.
@@ -315,6 +323,10 @@ def extract_timeline(db: sqlite3.Connection, match_id: str, timeline: dict) -> N
                         del buys[who][position]
                         break
 
+    # Повторное извлечение (--refetch-timelines) не должно оставлять
+    # хвост старой, обрезанной версии.
+    db.execute("DELETE FROM purchases WHERE match_id = ?", (match_id,))
+
     for index, puuid in enumerate(puuids, start=1):
         if skills[index]:
             db.execute(
@@ -328,7 +340,41 @@ def extract_timeline(db: sqlite3.Connection, match_id: str, timeline: dict) -> N
                 (match_id, puuid, seq, item_id, at_ms),
             )
 
-    db.execute("UPDATE matches SET has_timeline = 1 WHERE match_id = ?", (match_id,))
+    db.execute("UPDATE matches SET has_timeline = ? WHERE match_id = ?",
+               (TIMELINE_FULL, match_id))
+
+
+def refetch_timelines(client: RiotClient, db: sqlite3.Connection, patch: str,
+                      hours: float) -> None:
+    """Перекачать timeline матчей, извлечённых со старым потолком покупок.
+
+    Один запрос на матч вместо двух: сам матч уже в базе. Порядок
+    случайный не нужен — идём по старшинству, прерывание безопасно,
+    повторный запуск продолжит с того же места.
+    """
+    deadline = time.monotonic() + hours * 3600 if hours > 0 else float("inf")
+    pending = [row[0] for row in db.execute(
+        "SELECT match_id FROM matches WHERE patch = ? AND has_timeline = 1 "
+        "ORDER BY started_at DESC", (patch,))]
+    print(f"патч {patch}: перекачать timeline у {len(pending)} матчей", flush=True)
+
+    done = 0
+    started = time.monotonic()
+    for match_id in pending:
+        if stop_requested or time.monotonic() >= deadline:
+            break
+        events = client.timeline(match_id)
+        if events:
+            with db:
+                extract_timeline(db, match_id, events)
+        done += 1
+        if done % 50 == 0:
+            elapsed = (time.monotonic() - started) / 3600
+            rate = done / elapsed if elapsed > 0 else 0
+            print(f"перекачано {done} из {len(pending)} ({rate:.0f}/ч)", flush=True)
+
+    print(f"итог: перекачано {done} из {len(pending)}, запросов {client.requests}",
+          flush=True)
 
 
 def next_player(db: sqlite3.Connection):
@@ -405,7 +451,8 @@ def show_stats(db: sqlite3.Connection) -> None:
         return row[0] if row else 0
 
     print(f"матчей:        {scalar('SELECT COUNT(*) FROM matches')}")
-    print(f"  с timeline:  {scalar('SELECT COUNT(*) FROM matches WHERE has_timeline=1')}")
+    print(f"  с timeline:  {scalar('SELECT COUNT(*) FROM matches WHERE has_timeline>=1')}")
+    print(f"  полных:      {scalar('SELECT COUNT(*) FROM matches WHERE has_timeline=?', TIMELINE_FULL)}")
     print(f"участников:    {scalar('SELECT COUNT(*) FROM participants')}")
     print(f"прокачек:      {scalar('SELECT COUNT(*) FROM skill_order')}")
     print(f"покупок:       {scalar('SELECT COUNT(*) FROM purchases')}")
@@ -458,6 +505,8 @@ def main() -> int:
                         help="вдвое быстрее, но без скиллов и порядка покупок")
     parser.add_argument("--stats", action="store_true")
     parser.add_argument("--prune", metavar="PATCH", help="удалить все патчи, кроме этого")
+    parser.add_argument("--refetch-timelines", metavar="PATCH",
+                        help="перекачать timeline матчей патча с обрезанными покупками")
     args = parser.parse_args()
 
     db = open_db(args.db)
@@ -478,6 +527,8 @@ def main() -> int:
     signal.signal(signal.SIGINT, request_stop)
 
     try:
+        if args.refetch_timelines:
+            refetch_timelines(client, db, args.refetch_timelines, args.hours)
         if args.seed:
             print(f"новых игроков в очереди: {seed(client, db, args.seed_pages)}")
         if args.hours > 0:

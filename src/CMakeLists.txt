@@ -85,13 +85,22 @@ target_compile_definitions(sintence PRIVATE UNICODE _UNICODE)
 
 # Пути, зашитые в бинарник, чтобы запускать без аргументов:
 #   SINTENCE_DEFAULT_DATA_DIR — выгрузка матчей для офлайн-режима
-#   SINTENCE_WEB_DIR          — собранный фронтенд, который раздаёт сервер
+#   SINTENCE_WEB_DIR          — собранный интерфейс (репозиторий sintence-web,
+#                               каталог dist/). По умолчанию — соседний с этим
+#                               репозиторием ../sintence-web/dist; меняется
+#                               при конфигурации -DSINTENCE_WEB_DIR=... или
+#                               без пересборки переменной окружения того же имени
 #   SINTENCE_PACKS_DIR        — паки предпочтений (scripts/build_pack.py);
 #                               когда появится сервер, вместо каталога
 #                               здесь будет URL, и больше ничего не изменится
+get_filename_component(SINTENCE_WEB_DIR_DEFAULT
+    "${CMAKE_SOURCE_DIR}/../sintence-web/dist" ABSOLUTE)
+set(SINTENCE_WEB_DIR "${SINTENCE_WEB_DIR_DEFAULT}" CACHE PATH
+    "Каталог собранного интерфейса (sintence-web/dist)")
+
 target_compile_definitions(sintence PRIVATE
     SINTENCE_DEFAULT_DATA_DIR="${CMAKE_SOURCE_DIR}/project/data/matches"
-    SINTENCE_WEB_DIR="${CMAKE_SOURCE_DIR}/web/dist"
+    SINTENCE_WEB_DIR="${SINTENCE_WEB_DIR}"
     SINTENCE_PACKS_DIR="${CMAKE_SOURCE_DIR}/project/data/packs")
 
 if(SINTENCE_ASAN_DLLS)

@@ -42,7 +42,7 @@ League (127.0.0.1:2999)
                                               |  JSON
                                               v
                                     Vue 3 inside a WebView2 window
-                                              (web/)
+                                    (separate repository: sintence-web)
 ```
 
 Layers depend strictly downwards: `app/ → analysis/ → core/`,
@@ -58,7 +58,6 @@ analysis code: files, the Riot API and test fixtures all live behind the
 | `src/data/` | adapters: file reading, JSON parsing, Live Client Data API |
 | `src/analysis/` | metrics and aggregation over `core/` types |
 | `src/app/` | entry point, local HTTP server, overlay window |
-| `web/` | user interface: Vue 3 + Vite + TypeScript |
 | `tests/` | the whole suite as a single `sintence_tests` binary |
 | `project/` | architecture decisions, Riot constraints, data schema and fixtures |
 
@@ -67,16 +66,24 @@ analysis code: files, the Riot API and test fixtures all live behind the
 Requires **Visual Studio 2026** (MSVC 14.51+, C++23), **CMake ≥ 3.20**,
 **Node.js 20+** and **vcpkg**. The WebView2 Runtime ships with Windows 11.
 
+The user interface lives in its own repository,
+[sintence-web](https://github.com/fremov/sintence-web), cloned next to this one:
+
+```
+D:\Dev\...\Portfolio        this repository
+D:\Dev\...\sintence-web     the interface; its dist/ is what the window shows
+```
+
 C++ dependencies are installed automatically from `vcpkg.json` at configure
 time: cpp-httplib (HTTP client and server), OpenSSL, WebView2 SDK.
 `doctest` and `nlohmann/json` are header-only files in `third_party/`.
 
 ```powershell
-# interface
-cd web
+# interface (sibling repository)
+cd ..\sintence-web
 npm install
 npm run build
-cd ..
+cd ..\Portfolio
 
 # application
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<path to vcpkg>/scripts/buildsystems/vcpkg.cmake
@@ -102,15 +109,28 @@ cmake -S . -B build -DSINTENCE_REQUIRE_ADMIN=OFF ...
 
 ## Interface development
 
-Editing CSS does not require rebuilding the C++ side:
+The interface talks to the application only through the JSON contract
+(`/api/health`, `/api/live`, `/api/profiles`, `/api/preferences`); its side
+of the contract is a set of zod schemas in `sintence-web/src/api/schemas.ts`.
+Editing the interface never requires rebuilding the C++ side:
 
 ```powershell
-build\src\Debug\sintence.exe   # serves /api/live on port 8777
-cd web && npm run dev          # http://localhost:5173, hot reload
+cd ..\sintence-web
+npm run dev:mock      # no game, no sintence.exe: mock data and a scenario switcher
+npm run dev           # live data: /api is proxied to a running sintence.exe
 ```
 
-Vite proxies `/api` to the application, so the page in the browser shows real
-data from the running match. Details in `web/README.md`.
+Environment variables of `sintence.exe` that connect the two:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SINTENCE_WEB_DIR` | `../sintence-web/dist` | where the built interface is |
+| `SINTENCE_UI_URL` | — | show this URL in the overlay window instead, e.g. `http://localhost:5173` for live Vite |
+| `SINTENCE_PORT` | `8777` | local API port; lets a debug build run next to the normal one |
+
+The overlay window's design — size, screen share, anchor, background, hotkey —
+is set in `sintence-web/src/overlay/config.ts` and sent to the window over
+`chrome.webview.postMessage`; the C++ side only validates and applies it.
 
 ## Champion preferences: collecting the data
 

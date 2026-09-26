@@ -41,7 +41,10 @@ STATIC_DIR = ROOT / "project" / "data" / "static"
 DDRAGON = "https://ddragon.leagueoflegends.com"
 # 2: бакеты стали матчапами (чемпион|роль|оппонент|ранг), руны отдаются
 # страницей целиком, предметы — цепочкой в порядке покупки.
-SCHEMA_VERSION = 2
+# 3: плюс числовые id рун и предметов (keystoneId, primaryIds, itemIds...):
+# по ним интерфейс берёт иконки и названия на языке клиента. Надмножество
+# второй схемы — приложение читает обе.
+SCHEMA_VERSION = 3
 
 # Ранговые корзины. Дробить по каждому тиру нельзя: выборка расползается,
 # а разница между Изумрудом I и Изумрудом IV в сборках неразличима.
@@ -64,6 +67,16 @@ MIN_VARIANT_GAMES = 5
 # набирается, а порядок уже виден.
 MAX_SKILL_STEPS = 5
 MAX_CHAIN = 3
+
+# Сколько игр должно пройти через звено цепочки предметов, чтобы
+# цепочка продлилась дальше него. Ниже — цепочка обрывается на том,
+# в чём выборка ещё уверена, а не угадывает третий предмет по двум играм.
+MIN_CHAIN_STEP_GAMES = 3
+
+# Сколько матчей с timeline нужно новому патчу, чтобы пак собирался
+# по нему, а не по прошлому. Сборки меняются с патчем, и пак старого
+# патча в первые дни после выхода нового хуже, чем тонкий, но свежий.
+MIN_PATCH_MATCHES = 1000
 
 # Осколки статов: id из statPerks. В Data Dragon их нет ни в runesReforged,
 # ни в item.json — это единственный справочник, который приходится держать
@@ -198,6 +211,65 @@ class Distribution:
         return rows
 
 
+class ChainTree:
+    """Цепочки законченных предметов как дерево префиксов.
+
+    Точное совпадение трёх предметов по порядку повторяется редко: на
+    сотне игр чемпиона одна и та же тройка встречается два-три раза, и
+    вариантов с порогом в пять игр почти не остаётся — именно так в паке
+    16.18 у 548 бакетов из 656 предметов не было вовсе.
+
+    Поэтому цепочка строится жадно: самый частый первый предмет, среди
+    тех, кто его собрал, — самый частый второй, и так далее, пока через
+    звено проходит хотя бы MIN_CHAIN_STEP_GAMES игр. Вариантов столько,
+    сколько популярных первых предметов, и у каждого честное число игр —
+    тех, кто прошёл весь путь целиком.
+    """
+
+    def __init__(self):
+        self.chains = []  # (кортеж id, win)
+
+    def add(self, chain, win: int) -> None:
+        if chain:
+            self.chains.append((tuple(chain[:MAX_CHAIN]), win))
+
+    def top(self, total: int, label):
+        firsts = {}
+        for chain, _win in self.chains:
+            firsts[chain[0]] = firsts.get(chain[0], 0) + 1
+
+        rows = []
+        for first, count in sorted(firsts.items(), key=lambda kv: -kv[1]):
+            if count < MIN_VARIANT_GAMES or len(rows) >= TOP_VARIANTS:
+                break
+            path = [first]
+            while len(path) < MAX_CHAIN:
+                following = {}
+                for chain, _win in self.chains:
+                    if len(chain) > len(path) and list(chain[:len(path)]) == path:
+                        following[chain[len(path)]] = following.get(chain[len(path)], 0) + 1
+                if not following:
+                    break
+                best, best_count = max(following.items(), key=lambda kv: kv[1])
+                if best_count < MIN_CHAIN_STEP_GAMES:
+                    break
+                path.append(best)
+
+            matching = [win for chain, win in self.chains
+                        if list(chain[:len(path)]) == path]
+            games = len(matching)
+            wins = sum(matching)
+            row = label(tuple(path))
+            row |= {
+                "games": games,
+                "share": round(games / total, 4) if total else 0.0,
+                "winrate": round(wins / games, 4) if games else 0.0,
+                "winrateLow": round(wilson_lower(wins, games), 4),
+            }
+            rows.append(row)
+        return rows
+
+
 def lane_opponents(rows) -> dict:
     """(match_id, puuid) -> чемпион противника по линии.
 
@@ -304,8 +376,7 @@ def build(db: sqlite3.Connection, patch: str, min_games: int,
                     "wins": 0,
                     "runePages": Distribution(),
                     "skills": Distribution(),
-                    "chains": Distribution(),
-                    "boots": Distribution(),
+                    "chains": ChainTree(),
                 })
                 bucket["games"] += 1
                 bucket["wins"] += win
@@ -313,8 +384,8 @@ def build(db: sqlite3.Connection, patch: str, min_games: int,
                     bucket["runePages"].add(page, win)
                 if len(skill_seq) >= 3:
                     bucket["skills"].add(skill_seq[:MAX_SKILL_STEPS], win)
-                if len(core) >= 2:
-                    bucket["chains"].add(tuple(core[:MAX_CHAIN]), win)
+                if core:
+                    bucket["chains"].add(core, win)
 
     return render(buckets, patch, min_games, runes, items)
 
@@ -329,17 +400,23 @@ def render(buckets: dict, patch: str, min_games: int, runes: dict, items: dict) 
             "name": rune_name(keystone),
             "page": {
                 "keystone": rune_name(keystone),
+                "keystoneId": keystone,
                 "primaryTree": rune_name(primary_tree),
+                "primaryTreeId": primary_tree,
                 "primary": [rune_name(perk) for perk in primary],
+                "primaryIds": list(primary),
                 "secondaryTree": rune_name(sub_tree),
+                "secondaryTreeId": sub_tree,
                 "secondary": [rune_name(perk) for perk in secondary],
+                "secondaryIds": list(secondary),
                 "shards": [SHARD_NAMES.get(perk, f"#{perk}") for perk in shards],
+                "shardIds": list(shards),
             },
         }
 
     def chain_variant(key):
         names = [item_name(item) for item in key]
-        return {"name": " → ".join(names), "steps": names}
+        return {"name": " → ".join(names), "steps": names, "itemIds": list(key)}
 
     def skill_variant(key):
         return {"name": ">".join(key), "steps": list(key)}
@@ -364,13 +441,28 @@ def render(buckets: dict, patch: str, min_games: int, runes: dict, items: dict) 
     return out
 
 
-def dominant_patch(db: sqlite3.Connection) -> str:
-    row = db.execute(
-        "SELECT patch, COUNT(*) FROM matches GROUP BY patch ORDER BY 2 DESC LIMIT 1"
-    ).fetchone()
-    if not row:
+def patch_key(patch: str):
+    """'16.19' -> (16, 19): патчи сравниваются как числа, '16.9' < '16.10'."""
+    return tuple(int(part) for part in patch.split(".") if part.isdigit())
+
+
+def pick_patch(db: sqlite3.Connection) -> str:
+    """Самый новый патч, по которому набралось MIN_PATCH_MATCHES матчей
+    с timeline; если такого нет — патч с наибольшим числом матчей.
+
+    Раньше брался только второй вариант, и в первые дни после выхода
+    патча пак собирался по прошлому: 2247 матчей 16.18 перевешивали
+    1679 матчей 16.19, хотя играли уже на 16.19.
+    """
+    rows = db.execute(
+        "SELECT patch, COUNT(*), SUM(has_timeline >= 1) FROM matches GROUP BY patch"
+    ).fetchall()
+    if not rows:
         raise SystemExit("база пуста — сначала python scripts/crawl.py --seed --hours N")
-    return row[0]
+    fresh = [patch for patch, _total, timelines in rows if (timelines or 0) >= MIN_PATCH_MATCHES]
+    if fresh:
+        return max(fresh, key=patch_key)
+    return max(rows, key=lambda row: row[1])[0]
 
 
 def main() -> int:
@@ -378,7 +470,7 @@ def main() -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--db", type=pathlib.Path, default=DEFAULT_DB)
     parser.add_argument("--region", default="ru")
-    parser.add_argument("--patch", help="по умолчанию — патч с наибольшим числом матчей")
+    parser.add_argument("--patch", help="по умолчанию — самый новый патч с достаточной выборкой")
     parser.add_argument("--min-games", type=int, default=20,
                         help="ниже этого бакет не попадает в пак вовсе")
     parser.add_argument("--out", type=pathlib.Path, default=PACKS_DIR)
@@ -389,7 +481,7 @@ def main() -> int:
         return 1
 
     db = sqlite3.connect(args.db)
-    patch = args.patch or dominant_patch(db)
+    patch = args.patch or pick_patch(db)
 
     version = latest_version()
     runes = load_runes(version)

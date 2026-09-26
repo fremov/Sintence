@@ -11,11 +11,15 @@
 #include <WebView2.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <format>
 #include <fstream>
+#include <optional>
 #include <print>
 #include <string>
+
+#include "json.hpp"
 
 using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
@@ -24,11 +28,33 @@ namespace sintence {
 
 namespace {
 
-// Фон окна. Совпадает с --panel из web/src/styles.css: пока WebView2
-// не отрисовал первый кадр, видно именно его, и другой цвет дал бы
-// вспышку при каждом показе панели.
+// Фон окна до первого кадра WebView2. Значение по умолчанию: настоящий
+// цвет присылает интерфейс в overlay/config (см. HandleWebMessage),
+// и дальше окно красится им — дизайн живёт в web, а не здесь.
 constexpr COLORREF kPanelBackground = RGB(0x12, 0x16, 0x1d);
 constexpr int kHotkeyVisibilityId = 1;
+
+// Клавиша, которую ловит хук. Меняется из интерфейса (overlay/config),
+// читается в потоке хука — отсюда atomic.
+std::atomic<UINT> g_toggle_key{VK_NEXT};
+
+// Клавиши, которые интерфейс имеет право назначить. Буквы, цифры и всё,
+// что нужно в матче, сюда не входят: перехваченная клавиша съедается,
+// и назначить панель на «Q» значило бы сломать игру.
+bool IsAllowedToggleKey(UINT key) {
+    switch (key) {
+        case VK_PRIOR:
+        case VK_NEXT:
+        case VK_HOME:
+        case VK_END:
+        case VK_INSERT:
+        case VK_PAUSE:
+        case VK_SCROLL:
+            return true;
+        default:
+            return key >= VK_F1 && key <= VK_F12;
+    }
+}
 
 // Сообщение «переключить панель», которое шлёт себе хук клавиатуры.
 // Обработчик хука обязан отработать за миллисекунды, иначе Windows снимет
@@ -84,7 +110,7 @@ bool IsElevated() {
 LRESULT CALLBACK KeyboardHook(int code, WPARAM wparam, LPARAM lparam) {
     if (code == HC_ACTION && (wparam == WM_KEYDOWN || wparam == WM_SYSKEYDOWN)) {
         const auto* key = reinterpret_cast<KBDLLHOOKSTRUCT*>(lparam);
-        if (key->vkCode == VK_NEXT && g_overlay_window != nullptr) {
+        if (key->vkCode == g_toggle_key.load() && g_overlay_window != nullptr) {
             PostMessageW(g_overlay_window, WM_APP_TOGGLE_PANEL, 0, 0);
             // Клавиша съедается: игра и другие программы её не увидят,
             // иначе PgDn заодно пролистывал бы всё, что под панелью.
@@ -94,17 +120,196 @@ LRESULT CALLBACK KeyboardHook(int code, WPARAM wparam, LPARAM lparam) {
     return CallNextHookEx(g_keyboard_hook, code, wparam, lparam);
 }
 
+// Как панель стоит на экране. Значения по умолчанию — из OverlayOptions;
+// дальше их присылает интерфейс сообщением overlay/config.
+enum class Anchor { Center, Top };
+
 struct OverlayState {
     ComPtr<ICoreWebView2Controller> controller;
+    ComPtr<ICoreWebView2> webview;
     // Окно стартует скрытым: оверлей нужен по требованию, а не постоянно.
     bool visible = false;
     // Перекрывается значениями из OverlayOptions при запуске.
     int width = 2240;
     int height = 1280;
+    // Какую долю экрана панель может занять, не больше.
+    double max_screen_share = 0.9;
+    Anchor anchor = Anchor::Center;
+    int offset_y = 0;
+    COLORREF background = kPanelBackground;
+    // Откуда принимать сообщения: origin страницы, которую окно открыло.
+    // Сообщение с другого origin (переход по ссылке внутри WebView)
+    // окном управлять не должно.
+    std::wstring allowed_origin;
 };
 
 OverlayState* StateOf(HWND hwnd) {
     return reinterpret_cast<OverlayState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+}
+
+// Где стоять панели на текущем экране.
+//
+// Запрошенный размер обрезается по экрану: на 1920x1080 панель
+// в 2240 точек шириной уехала бы за край, и половину карточек
+// стало бы не видно вовсе.
+RECT Placement(const OverlayState& state) {
+    const int screen_width = GetSystemMetrics(SM_CXSCREEN);
+    const int screen_height = GetSystemMetrics(SM_CYSCREEN);
+
+    const int width = std::min(state.width, static_cast<int>(screen_width * state.max_screen_share));
+    const int height =
+        std::min(state.height, static_cast<int>(screen_height * state.max_screen_share));
+    const int x = (screen_width - width) / 2;
+    int y = state.anchor == Anchor::Top ? 0 : (screen_height - height) / 2;
+    y = std::clamp(y + state.offset_y, 0, std::max(0, screen_height - height));
+    return RECT{x, y, x + width, y + height};
+}
+
+// Сообщение странице: overlay/shown, overlay/hidden. Интерфейсу это нужно,
+// чтобы, например, обновить данные в момент показа, а не ждать тика опроса.
+void NotifyPage(const OverlayState& state, std::string_view type) {
+    if (!state.webview) {
+        return;
+    }
+    const std::string json = std::format(R"({{"type":"{}"}})", type);
+    const std::wstring wide(json.begin(), json.end());  // только ASCII
+    state.webview->PostWebMessageAsJson(wide.c_str());
+}
+
+std::string ToUtf8(const wchar_t* text) {
+    if (text == nullptr) {
+        return {};
+    }
+    const int size = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
+    if (size <= 1) {
+        return {};
+    }
+    std::string result(static_cast<std::size_t>(size - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text, -1, result.data(), size, nullptr, nullptr);
+    return result;
+}
+
+// "#12161d" -> COLORREF. Любой другой формат — nullopt, цвет не меняется.
+std::optional<COLORREF> ParseHexColor(const std::string& text) {
+    if (text.size() != 7 || text[0] != '#') {
+        return std::nullopt;
+    }
+    unsigned value = 0;
+    for (std::size_t i = 1; i < text.size(); ++i) {
+        const char c = text[i];
+        value <<= 4;
+        if (c >= '0' && c <= '9') {
+            value |= static_cast<unsigned>(c - '0');
+        } else if (c >= 'a' && c <= 'f') {
+            value |= static_cast<unsigned>(c - 'a' + 10);
+        } else if (c >= 'A' && c <= 'F') {
+            value |= static_cast<unsigned>(c - 'A' + 10);
+        } else {
+            return std::nullopt;
+        }
+    }
+    return RGB((value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff);
+}
+
+void ApplyVisibility(HWND hwnd, OverlayState& state, bool visible);
+
+// Сообщение от интерфейса. Весь дизайн окна живёт в web: размер, место
+// на экране, фон, клавиша. C++ только применяет то, что прислали, и
+// проверяет границы — интерфейс не должен суметь сломать окно или игру.
+//
+//   {"type":"overlay/config", "width":2240, "height":1280,
+//    "maxScreenShare":0.9, "anchor":"center"|"top", "offsetY":0,
+//    "background":"#12161d", "toggleKey":34}
+//   {"type":"overlay/hide"}
+void HandleWebMessage(HWND hwnd, OverlayState& state, const std::string& json_text) {
+    const nlohmann::json message = nlohmann::json::parse(json_text, nullptr, false);
+    if (message.is_discarded() || !message.is_object() || !message.contains("type") ||
+        !message["type"].is_string()) {
+        Log("сообщение от интерфейса не разобралось");
+        return;
+    }
+    const std::string type = message["type"].get<std::string>();
+
+    if (type == "overlay/hide") {
+        if (state.visible) {
+            state.visible = false;
+            ApplyVisibility(hwnd, state, false);
+        }
+        return;
+    }
+    if (type != "overlay/config") {
+        Log(std::format("неизвестное сообщение от интерфейса: {}", type));
+        return;
+    }
+
+    const auto number = [&](const char* key) -> std::optional<double> {
+        if (message.contains(key) && message[key].is_number()) {
+            return message[key].get<double>();
+        }
+        return std::nullopt;
+    };
+
+    if (const auto width = number("width")) {
+        state.width = std::clamp(static_cast<int>(*width), 480, 7680);
+    }
+    if (const auto height = number("height")) {
+        state.height = std::clamp(static_cast<int>(*height), 320, 4320);
+    }
+    if (const auto share = number("maxScreenShare")) {
+        state.max_screen_share = std::clamp(*share, 0.3, 1.0);
+    }
+    if (const auto offset = number("offsetY")) {
+        state.offset_y = std::clamp(static_cast<int>(*offset), -2000, 2000);
+    }
+    if (message.contains("anchor") && message["anchor"].is_string()) {
+        state.anchor = message["anchor"].get<std::string>() == "top" ? Anchor::Top
+                                                                     : Anchor::Center;
+    }
+    if (message.contains("background") && message["background"].is_string()) {
+        if (const auto color = ParseHexColor(message["background"].get<std::string>())) {
+            state.background = *color;
+            // Кисть класса — то, чем окно закрашено до первого кадра WebView2.
+            // Старая кисть не удаляется: она принадлежала классу с запуска,
+            // а утечка одной кисти за сеанс дешевле гонки с перерисовкой.
+            SetClassLongPtrW(hwnd, GCLP_HBRBACKGROUND,
+                             reinterpret_cast<LONG_PTR>(CreateSolidBrush(*color)));
+            ComPtr<ICoreWebView2Controller2> controller2;
+            if (state.controller &&
+                SUCCEEDED(state.controller->QueryInterface(IID_PPV_ARGS(&controller2)))) {
+                controller2->put_DefaultBackgroundColor(
+                    {255, GetRValue(*color), GetGValue(*color), GetBValue(*color)});
+            }
+        }
+    }
+    if (const auto key = number("toggleKey")) {
+        const UINT vk = static_cast<UINT>(*key);
+        if (IsAllowedToggleKey(vk)) {
+            g_toggle_key.store(vk);
+        } else {
+            Log(std::format("клавиша {} для панели не разрешена, остаётся прежняя", vk));
+        }
+    }
+
+    Log(std::format("настройки окна от интерфейса: {}x{}, доля экрана {:.2f}", state.width,
+                    state.height, state.max_screen_share));
+
+    // Панель уже на экране — переставить сразу, а не при следующем показе.
+    if (state.visible) {
+        const RECT place = Placement(state);
+        SetWindowPos(hwnd, HWND_TOPMOST, place.left, place.top, place.right - place.left,
+                     place.bottom - place.top, SWP_NOACTIVATE);
+    }
+}
+
+// "http://127.0.0.1:8777/" -> "http://127.0.0.1:8777". Origin — это схема,
+// хост и порт; путь и всё после него к источнику сообщения не относятся.
+std::wstring OriginOf(const std::wstring& url) {
+    const std::size_t scheme = url.find(L"://");
+    if (scheme == std::wstring::npos) {
+        return url;
+    }
+    const std::size_t path = url.find(L'/', scheme + 3);
+    return path == std::wstring::npos ? url : url.substr(0, path);
 }
 
 // Показать или спрятать панель.
@@ -124,24 +329,18 @@ void ApplyVisibility(HWND hwnd, OverlayState& state, bool visible) {
         if (state.controller) {
             state.controller->put_IsVisible(FALSE);
         }
+        NotifyPage(state, "overlay/hidden");
         Log("панель спрятана");
         return;
     }
 
-    // Панель всегда открывается по центру экрана — положение не запоминается
-    // и не перетаскивается. Считаем центр при КАЖДОМ показе, а не один раз
-    // при создании: разрешение меняется при выходе из игры и обратно.
-    const int screen_width = GetSystemMetrics(SM_CXSCREEN);
-    const int screen_height = GetSystemMetrics(SM_CYSCREEN);
-
-    // Запрошенный размер обрезается по экрану: на 1920x1080 панель
-    // в 2240 точек шириной уехала бы за край, и половину карточек
-    // стало бы не видно вовсе. Девяносто процентов — чтобы панель
-    // читалась как окно поверх игры, а не как второй полный экран.
-    const int width = std::min(state.width, screen_width * 9 / 10);
-    const int height = std::min(state.height, screen_height * 9 / 10);
-    const int x = (screen_width - width) / 2;
-    const int y = (screen_height - height) / 2;
+    // Положение считается при КАЖДОМ показе, а не один раз при создании:
+    // разрешение меняется при выходе из игры и обратно.
+    const RECT place = Placement(state);
+    const int x = place.left;
+    const int y = place.top;
+    const int width = place.right - place.left;
+    const int height = place.bottom - place.top;
 
     // Поверх полноэкранной игры одного ShowWindow мало. SetForegroundWindow
     // Windows выполняет только у процесса, которому и так принадлежит
@@ -178,6 +377,7 @@ void ApplyVisibility(HWND hwnd, OverlayState& state, bool visible) {
     // Фокус клавиатуры внутрь страницы: без этого Escape и клики
     // по кнопкам до интерфейса не доходят.
     state.controller->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+    NotifyPage(state, "overlay/shown");
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
@@ -235,6 +435,7 @@ int RunOverlay(const OverlayOptions& options) {
     OverlayState state;
     state.width = options.width;
     state.height = options.height;
+    state.allowed_origin = OriginOf(options.url);
 
     const HINSTANCE instance = GetModuleHandleW(nullptr);
 
@@ -303,7 +504,7 @@ int RunOverlay(const OverlayOptions& options) {
         std::println("PgDn перехватить нечем — панель не открыть");
     }
 
-    std::println("PgDn — показать или спрятать панель, Esc — спрятать");
+    std::println("PgDn — показать или спрятать панель (клавишу может сменить интерфейс)");
     std::println("журнал событий: overlay.log рядом с exe");
 
     const std::wstring url = options.url;
@@ -343,6 +544,38 @@ int RunOverlay(const OverlayOptions& options) {
 
                             ComPtr<ICoreWebView2> webview;
                             controller->get_CoreWebView2(&webview);
+                            state->webview = webview;
+
+                            // Сообщения интерфейса: настройки окна и «спрячь меня».
+                            // Принимаются только со своего origin.
+                            EventRegistrationToken token{};
+                            webview->add_WebMessageReceived(
+                                Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+                                    [hwnd](ICoreWebView2*,
+                                           ICoreWebView2WebMessageReceivedEventArgs* args)
+                                        -> HRESULT {
+                                        OverlayState* state = StateOf(hwnd);
+                                        if (state == nullptr) {
+                                            return S_OK;
+                                        }
+                                        LPWSTR source = nullptr;
+                                        args->get_Source(&source);
+                                        const std::wstring from = source ? source : L"";
+                                        CoTaskMemFree(source);
+                                        if (!state->allowed_origin.empty() &&
+                                            OriginOf(from) != state->allowed_origin) {
+                                            Log("сообщение с чужого origin отброшено");
+                                            return S_OK;
+                                        }
+                                        LPWSTR json = nullptr;
+                                        if (SUCCEEDED(args->get_WebMessageAsJson(&json))) {
+                                            HandleWebMessage(hwnd, *state, ToUtf8(json));
+                                        }
+                                        CoTaskMemFree(json);
+                                        return S_OK;
+                                    })
+                                    .Get(),
+                                &token);
 
                             ComPtr<ICoreWebView2Settings> settings;
                             webview->get_Settings(&settings);

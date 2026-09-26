@@ -1,9 +1,9 @@
 {
- "schemaVersion": 2,
+ "schemaVersion": 3,
  "region": "RU",
- "patch": "16.18",
- "file": "ru-16.18.json",
- "sha256": "c80a654216a11bef9e7473f97947ab130e3c6f757ecf6f77c8ec924ceefd3695",
- "bytes": 693916,
- "generatedAt": 1790418919
+ "patch": "16.19",
+ "file": "ru-16.19.json",
+ "sha256": "68a4522507875e9bf208599d4f2253e67d0dd4667e6e1f6b6209e0bd980b3682",
+ "bytes": 1432297,
+ "generatedAt": 1790429195
 }

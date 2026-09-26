@@ -14,6 +14,11 @@ Sintence — десктопное приложение под Windows для Lea
   правится этот файл, а не обходится молча в коде.
 - `project/POLICY.md` — ограничения Riot. Обязательны для любой функции,
   которая работает с данными игры.
+- `project/CHAMP_SELECT.md` — как собирать профили до матча (LCU, spectator-v5);
+  исследование и план, ещё не реализовано.
+
+Интерфейс — отдельный репозиторий `../sintence-web` (Vue 3 + Vite + TypeScript + zod),
+со своим README. Контракт между ними — ARCHITECTURE.md §11.
 
 ## Сборка и тесты
 
@@ -21,7 +26,7 @@ MSVC (Visual Studio 2026, C++23), CMake ≥ 3.20, vcpkg (cpp-httplib + OpenSSL, 
 Node.js 20+. `doctest` и `nlohmann/json` лежат в `third_party/`.
 
 ```powershell
-cd web; npm install; npm run build; cd ..
+cd ..\sintence-web; npm install; npm run build; cd ..\Portfolio
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
@@ -38,8 +43,14 @@ build\tests\Debug\sintence_tests.exe --source-file="*rate_limiter*"   # одна
   с Vanguard). Для отладки без UAC: `-DSINTENCE_REQUIRE_ADMIN=OFF` в отдельный `build-noadmin`.
 - Тесты не ходят в сеть, не требуют ключа и запущенной игры: только фикстуры
   из `project/data/fixtures/`.
-- Интерфейс без пересборки C++: запустить `sintence.exe`, затем `cd web; npm run dev`
-  (Vite проксирует `/api` на `127.0.0.1:8777`).
+- Интерфейс без пересборки C++: в `../sintence-web` — `npm run dev:mock` (без игры
+  и без exe, моки и переключатель сценариев) или `npm run dev` (Vite проксирует
+  `/api` на `127.0.0.1:8777`).
+- Переменные окружения `sintence.exe`: `SINTENCE_WEB_DIR` (где собранный интерфейс,
+  по умолчанию `../sintence-web/dist`), `SINTENCE_UI_URL` (показать в окне адрес,
+  например живой Vite), `SINTENCE_PORT` (порт вместо 8777 — отладочная копия рядом
+  с рабочей). Рабочий `build\...\sintence.exe` часто запущен и держит exe и порт:
+  отладочную сборку делай в `build-noadmin` и запускай с `SINTENCE_PORT=8778`.
 
 ## Архитектура
 
@@ -48,7 +59,6 @@ src/core/      доменные типы, ни JSON, ни HTTP, ни файло�
 src/data/      адаптеры: файлы, Match-V5, Live Client, Riot API, пак предпочтений
 src/analysis/  метрики — чистые функции над типами core/
 src/app/       main, HTTP-сервер 127.0.0.1:8777, окно WebView2
-web/           Vue 3 + Vite + TypeScript, знает только JSON-контракт
 scripts/       Python (только stdlib): краулер Riot API -> SQLite -> пак
 ```
 
@@ -68,8 +78,14 @@ scripts/       Python (только stdlib): краулер Riot API -> SQLite -
   и хранит файлы локально. Сервер понадобится только при распространении
   другим людям — ради production-ключа, который нельзя класть в бинарник.
 
-Локальный API приложения: `/api/live` (табло), `/api/profiles` (501 без ключа),
-`/api/preferences` (советы активному игроку).
+Локальный API приложения: `/api/health` (версия контракта `kApiVersion`, включённые
+функции), `/api/live` (табло), `/api/profiles` (501 без ключа), `/api/preferences`
+(советы активному игроку; роль `NONE` заменяется самой частой по паку,
+`roleSource: "pack"`). Меняешь ответ — меняй zod-схему в `sintence-web` в том же заходе;
+удаляешь поле или меняешь тип — поднимай `kApiVersion`.
+
+Настройки окна оверлея (размер, якорь, фон, клавиша) задаёт интерфейс сообщением
+`overlay/config` через `chrome.webview.postMessage`; C++ только проверяет границы.
 
 ## Граница Riot (кратко, полностью — POLICY.md)
 
@@ -101,6 +117,11 @@ scripts/       Python (только stdlib): краулер Riot API -> SQLite -
 `LiveClientSource` ходит только в `allgamedata`: отдельные эндпоинты снимаются
 в разные моменты и вместе дают противоречивый снимок. В режиме наблюдателя
 и в реплее `activePlayer` приходит строкой с ошибкой вместо объекта.
+`allPlayers[].runes` — ключевая руна и деревья у всех (видно по Tab),
+`allPlayers[].summonerSpells` — ключ заклинания только внутри `rawDisplayName`.
+В Practice Tool и пользовательских играх `position` = `"NONE"`, у ботов
+Riot ID вида `Garen#BOT`, `rawChampionName` может отличаться регистром от Data
+Dragon (`FiddleSticks`).
 
 ## Riot API
 
@@ -156,7 +177,12 @@ python scripts/crawl.py --hours 8       # выгрузка матчей, Ctrl+C 
 python scripts/crawl.py --stats         # что лежит в базе
 python scripts/build_pack.py            # SQLite -> project/data/packs/<регион>-<патч>.json + index.json
 python scripts/crawl.py --prune 16.19   # оставить только текущий патч
+python scripts/crawl.py --refetch-timelines 16.19   # докачать покупки у старых матчей
 ```
+
+Покупок на игрока хранится до 40 (`MAX_PURCHASES`); матчи со старым потолком
+в 12 помечены `has_timeline = 1`. `build_pack.py` без `--patch` берёт самый новый
+патч с 1000+ матчами с timeline. Пак — схема 3 (id рун и предметов), C++ читает 2 и 3.
 
 Платформа по умолчанию — `ru` (`--platform`). База `project/data/base.sqlite`
 и выгрузки матчей в git не попадают, паки — попадают.

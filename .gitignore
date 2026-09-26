@@ -33,9 +33,8 @@ scripts/project/
 .vscode/
 *.user
 
-# Фронтенд: зависимости и сборка. Источник правды — web/src.
-web/node_modules/
-web/dist/
+# Python: кеш байткода скриптов.
+__pycache__/
 
 # vcpkg ставит зависимости по манифесту в каталог сборки.
 vcpkg_installed/
