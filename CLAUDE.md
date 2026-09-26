@@ -95,7 +95,9 @@ spectator-v5), `/api/profiles` (501 без ключа, без матча отд�
 `/api/preferences` (советы активному игроку по табло, а до матча — по параметрам
 `?champion=&role=&enemies=`; роль `NONE` заменяется самой частой по паку,
 `roleSource: "pack"`), окно профиля — `/api/profile`, `/api/matches`,
-`/api/matches/{id}[/timeline]` (история из `HistoryService`, 501 без ключа).
+`/api/matches/{id}[/timeline]` (история из `HistoryService`, 501 без ключа;
+`?champion=` — игры на одном чемпионе), `/api/players?q=` (подсказки ника из
+сохранённых матчей: поиска по части ника у Riot нет).
 
 LCU (клиент League): чтение — `LobbyService`; запись — только `data/lcu_actions`
 (страница рун и свои заклинания) и **только по клику** в интерфейсе, никогда

@@ -20,6 +20,18 @@
 
 namespace sintence {
 
+// Какие матчи игрока нужны. Ноль в поле — без ограничения.
+struct MatchFilter {
+    int queue_id = 0;     // 420 одиночная, 440 гибкая, 450 ARAM...
+    int champion_id = 0;  // только игры игрока на этом чемпионе
+};
+
+// Игрок, встреченный в сохранённых матчах, — подсказка при вводе ника.
+struct PlayerSuggestion {
+    std::string riot_id;  // "Имя#TAG" — как в последнем матче с ним
+    int games = 0;        // в скольких сохранённых матчах встречался
+};
+
 class MatchStore {
 public:
     virtual ~MatchStore() = default;
@@ -32,9 +44,17 @@ public:
     virtual std::optional<MatchDetail> LoadMatch(const std::string& match_id) const = 0;
 
     // Последние матчи игрока, новые первыми: offset, limit — для «ещё 20».
-    // queue_id 0 — все очереди.
     virtual std::vector<MatchDetail> RecentMatches(const std::string& puuid, int offset,
-                                                   int limit, int queue_id = 0) const = 0;
+                                                   int limit,
+                                                   const MatchFilter& filter = {}) const = 0;
+
+    // Игроки из сохранённых матчей, чей Riot ID содержит query (без учёта
+    // регистра, кириллица тоже). Сначала те, у кого с query начинается имя,
+    // внутри — кто чаще встречался. Riot поиска по части ника не даёт:
+    // account-v1 знает только точное Имя#TAG, поэтому подсказки — из своих
+    // данных. Пустой query — пустой ответ.
+    virtual std::vector<PlayerSuggestion> SearchPlayers(std::string_view query,
+                                                        int limit) const = 0;
 
     // Сколько матчей игрока уже в хранилище.
     virtual int CountMatches(const std::string& puuid) const = 0;

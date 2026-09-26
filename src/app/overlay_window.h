@@ -1,6 +1,7 @@
 #ifndef SINTENCE_APP_OVERLAY_WINDOW_H
 #define SINTENCE_APP_OVERLAY_WINDOW_H
 
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -42,6 +43,12 @@ struct OverlayOptions {
 
     // Каталог данных WebView2 (кеш, localStorage). Пусто — рядом с exe.
     std::wstring user_data_dir;
+
+    // Есть ли что показать на панели: идёт выбор чемпиона, экран загрузки
+    // или матч. Зовётся раз в секунду из фонового потока. Пока false,
+    // PgDn панель не открывает и не перехватывается. Пусто — панель
+    // открывается всегда, как раньше.
+    std::function<bool()> has_content;
 };
 
 // Создаёт окно СКРЫТЫМ, поднимает WebView2 и крутит цикл сообщений.

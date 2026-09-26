@@ -65,7 +65,7 @@ void TrayIcon::Notify(const std::wstring& title, const std::wstring& text) {
     Shell_NotifyIconW(NIM_MODIFY, &info);
 }
 
-void TrayIcon::ShowMenu(bool has_profile, bool overlay_visible) {
+void TrayIcon::ShowMenu(bool has_profile, bool overlay_visible, bool overlay_available) {
     HMENU menu = CreatePopupMenu();
     if (menu == nullptr) {
         return;
@@ -73,8 +73,14 @@ void TrayIcon::ShowMenu(bool has_profile, bool overlay_visible) {
     if (has_profile) {
         AppendMenuW(menu, MF_STRING, kTrayShowProfile, L"Статистика");
     }
-    AppendMenuW(menu, MF_STRING, kTrayToggleOverlay,
-                overlay_visible ? L"Спрятать оверлей\tPgDn" : L"Показать оверлей\tPgDn");
+    if (overlay_visible) {
+        AppendMenuW(menu, MF_STRING, kTrayToggleOverlay, L"Спрятать оверлей\tPgDn");
+    } else if (overlay_available) {
+        AppendMenuW(menu, MF_STRING, kTrayToggleOverlay, L"Показать оверлей\tPgDn");
+    } else {
+        AppendMenuW(menu, MF_STRING | MF_GRAYED, kTrayToggleOverlay,
+                    L"Оверлей — с выбора чемпиона");
+    }
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kTrayExit, L"Выход");
     SetMenuDefaultItem(menu, has_profile ? kTrayShowProfile : kTrayToggleOverlay, FALSE);

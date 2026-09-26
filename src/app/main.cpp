@@ -198,6 +198,20 @@ int main() {
         }
         options.profile_url = base + L"#/profile";
     }
+    // Оверлей открывается, только когда на нём что-то есть: с первой секунды
+    // выбора чемпиона, на экране загрузки и в матче (фазы клиента League).
+    // Без клиента (реплей, Practice Tool с отдельным запуском) — по ответу
+    // Live Client. Снимок лобби — память, запрос к 2999 — только если фаза
+    // ничего не сказала: без игры он отказывает мгновенно.
+    options.has_content = [&live_source, &lobby] {
+        const std::string phase = lobby.Snapshot().phase;
+        if (phase == "ChampSelect" || phase == "GameStart" || phase == "InProgress" ||
+            phase == "Reconnect") {
+            return true;
+        }
+        return live_source.IsAvailable();
+    };
+
     const int code = sintence::RunOverlay(options);
 
     // Выход сразу, без деструкторов служб: история может спать в ограничителе

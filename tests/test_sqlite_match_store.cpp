@@ -92,7 +92,7 @@ TEST_CASE("SqliteMatchStore: последние матчи — новые пер
     REQUIRE(page.size() == 1);
     CHECK(page[0].match_id == "RU_2");
 
-    const auto solo = store->RecentMatches("me", 0, 10, 420);
+    const auto solo = store->RecentMatches("me", 0, 10, {.queue_id = 420});
     REQUIRE(solo.size() == 2);
     CHECK(solo[0].match_id == "RU_2");
 
@@ -111,4 +111,54 @@ TEST_CASE("SqliteMatchStore: timeline отдельно от матча") {
 
 TEST_CASE("SqliteMatchStore: несуществующий каталог — nullptr") {
     CHECK(SqliteMatchStore::Open("Z:/нет/такого/каталога/history.sqlite") == nullptr);
+}
+
+TEST_CASE("SqliteMatchStore: фильтр по чемпиону и по очереди вместе") {
+    auto store = SqliteMatchStore::Open(":memory:");
+    REQUIRE(store != nullptr);
+    MatchDetail ahri = Match("RU_4", 4000, 420);
+    ahri.participants[0].champion = "Ahri";
+    ahri.participants[0].champion_id = 103;
+    store->SaveMatch(Match("RU_1", 1000, 420), "{}");
+    store->SaveMatch(Match("RU_2", 2000, 450), "{}");
+    store->SaveMatch(ahri, "{}");
+
+    const int vladimir = static_cast<int>(std::string("Vladimir").size());  // см. Player()
+    const auto on_vladimir = store->RecentMatches("me", 0, 10, {.champion_id = vladimir});
+    REQUIRE(on_vladimir.size() == 2);
+    CHECK(on_vladimir[0].match_id == "RU_2");
+
+    const auto solo_vladimir =
+        store->RecentMatches("me", 0, 10, {.queue_id = 420, .champion_id = vladimir});
+    REQUIRE(solo_vladimir.size() == 1);
+    CHECK(solo_vladimir[0].match_id == "RU_1");
+
+    CHECK(store->RecentMatches("me", 0, 10, {.champion_id = 103}).size() == 1);
+    // Чемпион соперника в матче — не игры «me» на нём.
+    CHECK(store->RecentMatches("me", 0, 10, {.champion_id = 3}).empty());
+}
+
+TEST_CASE("SqliteMatchStore: подсказки игроков без учёта регистра, с кириллицей") {
+    auto store = SqliteMatchStore::Open(":memory:");
+    REQUIRE(store != nullptr);
+    MatchDetail first = Match("RU_1", 1000, 420);
+    first.participants[0].riot_id = "Амплификатор#3138";
+    first.participants[1].riot_id = "Ёжик в тумане#RU1";
+    MatchDetail second = Match("RU_2", 2000, 420);
+    second.participants[0].riot_id = "Амплификатор#3138";
+    second.participants[1].riot_id = "Большой Ампер#EUW";
+    store->SaveMatch(first, "{}");
+    store->SaveMatch(second, "{}");
+
+    const auto amp = store->SearchPlayers("амп", 10);
+    REQUIRE(amp.size() == 2);
+    CHECK(amp[0].riot_id == "Амплификатор#3138");  // имя начинается с запроса
+    CHECK(amp[0].games == 2);
+    CHECK(amp[1].riot_id == "Большой Ампер#EUW");   // запрос внутри имени
+
+    CHECK(store->SearchPlayers("ЕЖИК", 10).size() == 1);  // ё ищется как е
+    CHECK(store->SearchPlayers("#euw", 10).size() == 1);  // тег тоже
+    CHECK(store->SearchPlayers("амп", 1).size() == 1);
+    CHECK(store->SearchPlayers("", 10).empty());
+    CHECK(store->SearchPlayers("нет такого", 10).empty());
 }

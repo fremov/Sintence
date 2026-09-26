@@ -812,7 +812,8 @@ bool LiveApiServer::Start() {
         ProfileSummary summary;
         if (status && !status->puuid.empty()) {
             summary = SummarizeProfile(
-                impl_->store->RecentMatches(status->puuid, 0, status->depth, queue),
+                impl_->store->RecentMatches(status->puuid, 0, status->depth,
+                                            {.queue_id = queue}),
                 status->puuid);
         }
         doc["summary"] = SummaryToJson(summary);
@@ -829,13 +830,33 @@ bool LiveApiServer::Start() {
         if (status && !status->puuid.empty()) {
             const int offset = IntParam(request, "offset", 0, 0, 10000);
             const int limit = IntParam(request, "limit", 20, 1, 100);
-            const int queue = IntParam(request, "queue", 0, 0, 100000);
+            const MatchFilter filter{
+                .queue_id = IntParam(request, "queue", 0, 0, 100000),
+                .champion_id = IntParam(request, "champion", 0, 0, 100000),
+            };
             for (const MatchDetail& match :
-                 impl_->store->RecentMatches(status->puuid, offset, limit, queue)) {
+                 impl_->store->RecentMatches(status->puuid, offset, limit, filter)) {
                 matches.push_back(MatchToJson(match, status->puuid));
             }
         }
         response.set_content(nlohmann::json{{"matches", std::move(matches)}}.dump(),
+                             "application/json");
+    });
+
+    // Подсказки при вводе ника: игроки из сохранённых матчей. Своя база,
+    // без запросов к Riot — у Riot поиска по части ника нет.
+    impl_->server.Get("/api/players", [this, history_ready](const httplib::Request& request,
+                                                           httplib::Response& response) {
+        if (!history_ready(response)) {
+            return;
+        }
+        auto players = nlohmann::json::array();
+        for (const PlayerSuggestion& player :
+             impl_->store->SearchPlayers(request.get_param_value("q"),
+                                         IntParam(request, "limit", 8, 1, 20))) {
+            players.push_back({{"riotId", player.riot_id}, {"games", player.games}});
+        }
+        response.set_content(nlohmann::json{{"players", std::move(players)}}.dump(),
                              "application/json");
     });
 

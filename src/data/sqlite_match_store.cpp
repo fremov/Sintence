@@ -2,6 +2,7 @@
 
 #include <sqlite3.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <utility>
@@ -14,6 +15,39 @@ namespace sintence {
 namespace {
 
 constexpr const char* kSchemaVersion = "1";
+
+// Riot ID в виде для сравнения без учёта регистра: латиница и кириллица
+// в нижний регистр, «ё» как «е» (в никах пишут и так и так). Остальные
+// символы — как есть. Строка UTF-8; битая последовательность копируется
+// побайтно, без попытки её исправить.
+std::string FoldCase(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    for (std::size_t i = 0; i < text.size();) {
+        const auto byte = static_cast<unsigned char>(text[i]);
+        if (byte < 0x80) {
+            out.push_back(static_cast<char>(byte >= 'A' && byte <= 'Z' ? byte + 32 : byte));
+            ++i;
+            continue;
+        }
+        // Кириллица — двухбайтовая: 110xxxxx 10xxxxxx.
+        if ((byte & 0xE0) == 0xC0 && i + 1 < text.size()) {
+            char32_t code = ((byte & 0x1Fu) << 6) | (static_cast<unsigned char>(text[i + 1]) & 0x3Fu);
+            if (code >= 0x0410 && code <= 0x042F) {
+                code += 0x20;  // А-Я -> а-я
+            } else if (code == 0x0401 || code == 0x0451) {
+                code = 0x0435;  // Ё, ё -> е
+            }
+            out.push_back(static_cast<char>(0xC0 | (code >> 6)));
+            out.push_back(static_cast<char>(0x80 | (code & 0x3F)));
+            i += 2;
+            continue;
+        }
+        out.push_back(static_cast<char>(byte));
+        ++i;
+    }
+    return out;
+}
 
 long long NowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -267,22 +301,29 @@ std::optional<MatchDetail> SqliteMatchStore::LoadMatch(const std::string& match_
 }
 
 std::vector<MatchDetail> SqliteMatchStore::RecentMatches(const std::string& puuid, int offset,
-                                                         int limit, int queue_id) const {
+                                                         int limit,
+                                                         const MatchFilter& filter) const {
     const std::lock_guard<std::mutex> lock(mutex_);
     std::vector<std::string> ids;
     {
-        const char* sql = queue_id == 0
-                              ? "SELECT m.match_id FROM matches m JOIN participants p "
-                                "ON p.match_id = m.match_id WHERE p.puuid = ? "
-                                "ORDER BY m.started_at DESC LIMIT ? OFFSET ?"
-                              : "SELECT m.match_id FROM matches m JOIN participants p "
-                                "ON p.match_id = m.match_id WHERE p.puuid = ? AND m.queue_id = ? "
-                                "ORDER BY m.started_at DESC LIMIT ? OFFSET ?";
-        Statement query(impl_->db, sql);
+        std::string sql =
+            "SELECT m.match_id FROM matches m JOIN participants p "
+            "ON p.match_id = m.match_id WHERE p.puuid = ?";
+        if (filter.queue_id != 0) {
+            sql += " AND m.queue_id = ?";
+        }
+        if (filter.champion_id != 0) {
+            sql += " AND p.champion_id = ?";
+        }
+        sql += " ORDER BY m.started_at DESC LIMIT ? OFFSET ?";
+        Statement query(impl_->db, sql.c_str());
         int index = 1;
         query.Bind(index++, puuid);
-        if (queue_id != 0) {
-            query.Bind(index++, queue_id);
+        if (filter.queue_id != 0) {
+            query.Bind(index++, filter.queue_id);
+        }
+        if (filter.champion_id != 0) {
+            query.Bind(index++, filter.champion_id);
         }
         query.Bind(index++, limit).Bind(index, offset);
         while (query.Step()) {
@@ -297,6 +338,53 @@ std::vector<MatchDetail> SqliteMatchStore::RecentMatches(const std::string& puui
         }
     }
     return matches;
+}
+
+std::vector<PlayerSuggestion> SqliteMatchStore::SearchPlayers(std::string_view query,
+                                                              int limit) const {
+    const std::string needle = FoldCase(query);
+    if (needle.empty() || limit <= 0) {
+        return {};
+    }
+    struct Candidate {
+        PlayerSuggestion player;
+        bool prefix = false;
+    };
+    std::vector<Candidate> found;
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        // Кириллицу SQLite в LIKE без учёта регистра не сравнивает (только
+        // ASCII), поэтому отбор — здесь. Строк — по одной на игрока, их
+        // тысячи, а не миллионы: это игроки из просмотренных историй.
+        Statement rows(impl_->db,
+                       "SELECT riot_id, COUNT(*) FROM participants WHERE riot_id <> '' "
+                       "GROUP BY riot_id");
+        while (rows.Step()) {
+            const std::string riot_id = rows.Text(0);
+            const std::string folded = FoldCase(riot_id);
+            const std::size_t at = folded.find(needle);
+            if (at != std::string::npos) {
+                found.push_back({{riot_id, rows.Int(1)}, at == 0});
+            }
+        }
+    }
+    std::ranges::sort(found, [](const Candidate& a, const Candidate& b) {
+        if (a.prefix != b.prefix) {
+            return a.prefix;
+        }
+        if (a.player.games != b.player.games) {
+            return a.player.games > b.player.games;
+        }
+        return a.player.riot_id < b.player.riot_id;
+    });
+    std::vector<PlayerSuggestion> result;
+    for (const Candidate& candidate : found) {
+        if (static_cast<int>(result.size()) >= limit) {
+            break;
+        }
+        result.push_back(candidate.player);
+    }
+    return result;
 }
 
 int SqliteMatchStore::CountMatches(const std::string& puuid) const {

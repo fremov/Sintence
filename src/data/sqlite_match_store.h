@@ -34,7 +34,9 @@ public:
     bool SaveMatch(const MatchDetail& match, std::string_view raw_json) override;
     std::optional<MatchDetail> LoadMatch(const std::string& match_id) const override;
     std::vector<MatchDetail> RecentMatches(const std::string& puuid, int offset, int limit,
-                                           int queue_id = 0) const override;
+                                           const MatchFilter& filter = {}) const override;
+    std::vector<PlayerSuggestion> SearchPlayers(std::string_view query,
+                                                int limit) const override;
     int CountMatches(const std::string& puuid) const override;
     std::optional<std::string> LoadTimeline(const std::string& match_id) const override;
     bool SaveTimeline(const std::string& match_id, std::string_view raw_json) override;

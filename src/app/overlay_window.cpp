@@ -13,6 +13,10 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <stop_token>
+#include <thread>
 #include <format>
 #include <optional>
 #include <string>
@@ -39,6 +43,14 @@ constexpr int kHotkeyVisibilityId = 1;
 // Клавиша, которую ловит хук. Меняется из интерфейса (overlay/config),
 // читается в потоке хука — отсюда atomic.
 std::atomic<UINT> g_toggle_key{VK_NEXT};
+
+// Есть ли что показать (матч, выбор чемпиона, экран загрузки) и открыта ли
+// панель. Пишет фоновая проверка и оконная процедура, читает хук
+// клавиатуры — отсюда atomic. Пока показывать нечего и панель закрыта,
+// PgDn не перехватывается вовсе: приложение живёт в трее постоянно,
+// и съедать клавишу в браузере и документах оно не должно.
+std::atomic<bool> g_has_content{true};
+std::atomic<bool> g_panel_visible{false};
 
 // Клавиши, которые интерфейс имеет право назначить. Буквы, цифры и всё,
 // что нужно в матче, сюда не входят: перехваченная клавиша съедается,
@@ -141,7 +153,8 @@ bool IsElevated() {
 LRESULT CALLBACK KeyboardHook(int code, WPARAM wparam, LPARAM lparam) {
     if (code == HC_ACTION && (wparam == WM_KEYDOWN || wparam == WM_SYSKEYDOWN)) {
         const auto* key = reinterpret_cast<KBDLLHOOKSTRUCT*>(lparam);
-        if (key->vkCode == g_toggle_key.load() && g_overlay_window != nullptr) {
+        if (key->vkCode == g_toggle_key.load() && g_overlay_window != nullptr &&
+            (g_has_content.load() || g_panel_visible.load())) {
             PostMessageW(g_overlay_window, WM_APP_TOGGLE_PANEL, 0, 0);
             // Клавиша съедается: игра и другие программы её не увидят,
             // иначе PgDn заодно пролистывал бы всё, что под панелью.
@@ -355,6 +368,7 @@ std::wstring OriginOf(const std::wstring& url) {
 // за ShowWindow. Без этой строки окно появляется пустым — виден только
 // сплошной фон окна.
 void ApplyVisibility(HWND hwnd, OverlayState& state, bool visible) {
+    g_panel_visible.store(visible);
     if (!visible) {
         ShowWindow(hwnd, SW_HIDE);
         if (state.controller) {
@@ -431,6 +445,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
             LogText(message == WM_HOTKEY ? "PgDn: системная горячая клавиша"
                                          : "PgDn: хук клавиатуры");
             if (state) {
+                // Пустую панель не открываем. Закрыть можно всегда.
+                if (!state->visible && !g_has_content.load()) {
+                    Log("оверлей: показывать нечего — ни выбора чемпиона, ни матча");
+                    return 0;
+                }
                 state->visible = !state->visible;
                 ApplyVisibility(hwnd, *state, state->visible);
             }
@@ -455,7 +474,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
                                  g_profile_window ? kTrayShowProfile : kTrayToggleOverlay, 0);
                     break;
                 case WM_CONTEXTMENU:
-                    g_tray.ShowMenu(g_profile_window != nullptr, state && state->visible);
+                    g_tray.ShowMenu(g_profile_window != nullptr, state && state->visible,
+                                    g_has_content.load());
                     break;
                 default:
                     break;
@@ -623,6 +643,30 @@ int RunOverlay(const OverlayOptions& options) {
     g_profile_window = profile_window;
 
     Log("PgDn — показать или спрятать панель (клавишу может сменить интерфейс)");
+
+    // Раз в секунду: есть ли что показать. В фоне, а не в оконной процедуре:
+    // проверка Live Client — запрос к 127.0.0.1:2999, и пока игра грузится,
+    // он может висеть до двух секунд. Поток останавливается вместе с RunOverlay.
+    std::mutex content_mutex;
+    std::condition_variable_any content_wake;
+    std::jthread content_watch;
+    if (options.has_content) {
+        g_has_content.store(false);
+        content_watch = std::jthread([&, check = options.has_content](std::stop_token stop) {
+            std::optional<bool> last;  // первое состояние тоже в журнал
+            while (!stop.stop_requested()) {
+                const bool now = check();
+                g_has_content.store(now);
+                if (last != now) {
+                    LogText(now ? "оверлей: есть что показать — PgDn открывает панель"
+                            : "оверлей: показывать нечего — PgDn не перехватывается");
+                    last = now;
+                }
+                std::unique_lock<std::mutex> lock(content_mutex);
+                content_wake.wait_for(lock, stop, std::chrono::seconds(1), [] { return false; });
+            }
+        });
+    }
 
     const std::wstring url = options.url;
 

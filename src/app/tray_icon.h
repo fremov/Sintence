@@ -44,8 +44,9 @@ public:
     void Notify(const std::wstring& title, const std::wstring& text);
 
     // Меню у курсора. Команда приходит владельцу через WM_COMMAND.
-    // has_profile — есть ли окно статистики (SINTENCE_NO_PROFILE его убирает).
-    void ShowMenu(bool has_profile, bool overlay_visible);
+    // has_profile — есть ли окно статистики (SINTENCE_NO_PROFILE его убирает);
+    // overlay_available — есть ли что показать на оверлее (иначе пункт серый).
+    void ShowMenu(bool has_profile, bool overlay_visible, bool overlay_available);
 
 private:
     NOTIFYICONDATAW data_{};
