@@ -42,6 +42,19 @@ endif()
 find_package(httplib CONFIG REQUIRED)
 
 target_link_libraries(sintence_lib PUBLIC sintence_common httplib::httplib)
+
+# SQLite — история матчей игроков (data/sqlite_match_store) до переезда на
+# сервер. PRIVATE: sqlite3.h видит только адаптер, наружу он не выходит.
+find_package(unofficial-sqlite3 CONFIG REQUIRED)
+target_link_libraries(sintence_lib PRIVATE unofficial::sqlite3::sqlite3)
+
+# Схема истории встраивается в бинарник из project/data/history_schema.sql:
+# .sql-файл — единственный источник, он же потом уедет на сервер.
+set(SINTENCE_SCHEMA_FILE "${CMAKE_SOURCE_DIR}/project/data/history_schema.sql")
+file(READ "${SINTENCE_SCHEMA_FILE}" SINTENCE_HISTORY_SCHEMA)
+configure_file(data/history_schema.h.in "${CMAKE_CURRENT_BINARY_DIR}/generated/history_schema.h" @ONLY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${SINTENCE_SCHEMA_FILE}")
+target_include_directories(sintence_lib PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set_target_properties(sintence_lib PROPERTIES FOLDER "sintence")
 set_target_properties(sintence_lib PROPERTIES VS_GLOBAL_VcpkgEnabled false)
 
@@ -58,6 +71,8 @@ add_executable(sintence
     app/live_api_server.h
     app/overlay_window.cpp
     app/overlay_window.h
+    app/profile_window.cpp
+    app/profile_window.h
     app/sintence.manifest)
 
 # Манифест встраивается в exe: совместимость с версиями Windows и DPI.
@@ -75,7 +90,8 @@ if(MSVC AND SINTENCE_REQUIRE_ADMIN)
         "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'")
 endif()
 
-target_link_libraries(sintence PRIVATE sintence_lib unofficial::webview2::webview2)
+# dwmapi — тёмный заголовок окна профиля.
+target_link_libraries(sintence PRIVATE sintence_lib unofficial::webview2::webview2 dwmapi)
 set_target_properties(sintence PROPERTIES FOLDER "sintence")
 set_target_properties(sintence PROPERTIES VS_GLOBAL_VcpkgEnabled false)
 
@@ -101,7 +117,8 @@ set(SINTENCE_WEB_DIR "${SINTENCE_WEB_DIR_DEFAULT}" CACHE PATH
 target_compile_definitions(sintence PRIVATE
     SINTENCE_DEFAULT_DATA_DIR="${CMAKE_SOURCE_DIR}/project/data/matches"
     SINTENCE_WEB_DIR="${SINTENCE_WEB_DIR}"
-    SINTENCE_PACKS_DIR="${CMAKE_SOURCE_DIR}/project/data/packs")
+    SINTENCE_PACKS_DIR="${CMAKE_SOURCE_DIR}/project/data/packs"
+    SINTENCE_HISTORY_DB="${CMAKE_SOURCE_DIR}/project/data/history.sqlite")
 
 if(SINTENCE_ASAN_DLLS)
     add_custom_command(TARGET sintence POST_BUILD

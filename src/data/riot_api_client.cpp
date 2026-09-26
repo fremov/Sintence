@@ -126,6 +126,7 @@ RiotApiClient::RiotApiClient(std::string api_key, std::string fallback_platform_
 
 std::optional<std::string> RiotApiClient::Get(const std::string& host,
                                               const std::string& path) {
+    const std::lock_guard<std::recursive_mutex> lock(mutex_);
     const httplib::Headers headers{{"X-Riot-Token", api_key_}};
 
     for (int attempt = 0; attempt < 2; ++attempt) {
@@ -192,6 +193,7 @@ std::optional<std::string> RiotApiClient::Get(const std::string& host,
 }
 
 std::optional<std::string> RiotApiClient::ResolvePuuid(std::string_view riot_id) {
+    const std::lock_guard<std::recursive_mutex> lock(mutex_);
     const std::string key(riot_id);
     if (const auto cached = puuid_cache_.find(key); cached != puuid_cache_.end()) {
         std::println("riot: puuid для {} взят из кеша — запроса нет", key);
@@ -224,6 +226,7 @@ std::optional<std::string> RiotApiClient::ResolvePuuid(std::string_view riot_id)
 }
 
 std::string RiotApiClient::ResolvePlatformHost(const std::string& puuid) {
+    const std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (const auto cached = platform_cache_.find(puuid); cached != platform_cache_.end()) {
         return cached->second;
     }
@@ -247,6 +250,7 @@ std::string RiotApiClient::ResolvePlatformHost(const std::string& puuid) {
 }
 
 std::optional<PlayerProfile> RiotApiClient::LoadProfile(std::string_view riot_id) {
+    const std::lock_guard<std::recursive_mutex> lock(mutex_);
     auto puuid = ResolvePuuid(riot_id);
     if (!puuid) {
         return std::nullopt;
@@ -285,6 +289,7 @@ std::optional<PlayerProfile> RiotApiClient::LoadProfile(std::string_view riot_id
 }
 
 void RiotApiClient::RememberPuuid(const std::string& riot_id, const std::string& puuid) {
+    const std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (!riot_id.empty() && !puuid.empty()) {
         puuid_cache_.insert_or_assign(riot_id, puuid);
     }
@@ -292,6 +297,7 @@ void RiotApiClient::RememberPuuid(const std::string& riot_id, const std::string&
 
 std::optional<std::vector<LobbyMember>> RiotApiClient::LoadActiveGame(
     const std::string& self_puuid) {
+    const std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (self_puuid.empty()) {
         return std::nullopt;
     }
@@ -317,6 +323,7 @@ std::optional<std::vector<LobbyMember>> RiotApiClient::LoadActiveGame(
 
 std::vector<PlayerProfile> RiotApiClient::LoadProfiles(
     const std::vector<std::string>& riot_ids) {
+    const std::lock_guard<std::recursive_mutex> lock(mutex_);
     std::vector<PlayerProfile> profiles;
     profiles.reserve(riot_ids.size());
 
@@ -326,6 +333,37 @@ std::vector<PlayerProfile> RiotApiClient::LoadProfiles(
         }
     }
     return profiles;
+}
+
+std::optional<SummonerInfo> RiotApiClient::LoadSummoner(const std::string& puuid) {
+    const std::lock_guard<std::recursive_mutex> lock(mutex_);
+    const auto body = Get(ResolvePlatformHost(puuid), "/lol/summoner/v4/summoners/by-puuid/" + puuid);
+    return body ? ParseSummonerInfo(*body) : std::nullopt;
+}
+
+std::optional<std::vector<RankedStats>> RiotApiClient::LoadRankedEntries(const std::string& puuid) {
+    const std::lock_guard<std::recursive_mutex> lock(mutex_);
+    const auto body = Get(ResolvePlatformHost(puuid), "/lol/league/v4/entries/by-puuid/" + puuid);
+    return body ? ParseRankedEntries(*body) : std::nullopt;
+}
+
+std::optional<std::vector<std::string>> RiotApiClient::LoadMatchIds(const std::string& puuid,
+                                                                    int start, int count) {
+    const std::lock_guard<std::recursive_mutex> lock(mutex_);
+    // match-v5 живёт на РЕГИОНАЛЬНОМ хосте, как account-v1.
+    const auto body = Get(regional_host_, std::format("/lol/match/v5/matches/by-puuid/{}/ids?start={}&count={}",
+                                                      puuid, start, count));
+    return body ? ParseMatchIds(*body) : std::nullopt;
+}
+
+std::optional<std::string> RiotApiClient::LoadMatchJson(const std::string& match_id) {
+    const std::lock_guard<std::recursive_mutex> lock(mutex_);
+    return Get(regional_host_, "/lol/match/v5/matches/" + match_id);
+}
+
+std::optional<std::string> RiotApiClient::LoadTimelineJson(const std::string& match_id) {
+    const std::lock_guard<std::recursive_mutex> lock(mutex_);
+    return Get(regional_host_, "/lol/match/v5/matches/" + match_id + "/timeline");
 }
 
 }  // namespace sintence

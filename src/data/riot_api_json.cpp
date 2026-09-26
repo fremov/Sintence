@@ -180,4 +180,31 @@ std::optional<std::vector<LobbyMember>> ParseActiveGame(std::string_view json_te
     return members;
 }
 
+std::optional<SummonerInfo> ParseSummonerInfo(std::string_view json_text) {
+    const auto doc = nlohmann::json::parse(json_text, nullptr, false);
+    if (doc.is_discarded() || !doc.is_object()) {
+        return std::nullopt;
+    }
+    const auto icon = GetInt(doc, "profileIconId");
+    const auto level = GetInt(doc, "summonerLevel");
+    if (!icon && !level) {
+        return std::nullopt;
+    }
+    return SummonerInfo{icon.value_or(0), level.value_or(0)};
+}
+
+std::optional<std::vector<std::string>> ParseMatchIds(std::string_view json_text) {
+    const auto doc = nlohmann::json::parse(json_text, nullptr, false);
+    if (doc.is_discarded() || !doc.is_array()) {
+        return std::nullopt;
+    }
+    std::vector<std::string> ids;
+    for (const auto& id : doc) {
+        if (id.is_string()) {
+            ids.push_back(id.get<std::string>());
+        }
+    }
+    return ids;
+}
+
 }  // namespace sintence

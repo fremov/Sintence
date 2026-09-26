@@ -5,7 +5,9 @@
 #include <string>
 
 #include "live_game.h"         // интерфейс LiveGameSource
+#include "history_service.h"   // HistoryService из data/
 #include "lobby_service.h"     // LobbyService из data/
+#include "match_store.h"       // MatchStore из core/
 #include "preference_pack.h"   // PreferencePack из data/
 #include "profile_service.h"   // ProfileService из data/
 
@@ -39,6 +41,17 @@
 //                        любой сайт в браузере мог бы менять руны игрока.
 //                        Всегда 200 с полем status (ok, need_replace, ...),
 //                        403 — запрос не из интерфейса.
+//   GET /api/profile?riotId=&depth=50&queue=0 -> иконка, уровень, ранги,
+//                        прогресс загрузки истории и сводка по ролям
+//                        и чемпионам. Заказывает загрузку depth игр.
+//                        riotId нет — свой аккаунт из клиента League.
+//   GET /api/matches?riotId=&offset=0&limit=20&queue=0 -> матчи игрока
+//                        из хранилища, новые первыми, все десять участников.
+//   GET /api/matches/{id}          -> один матч целиком.
+//   GET /api/matches/{id}/timeline -> порядок прокачки и покупок, золото
+//                        по минутам; 202, пока timeline качается, 502 — не
+//                        скачался за три попытки (?retry=1 — заново).
+//                        501 у всех четырёх — нет ключа или хранилища.
 //   GET /*            -> статика из каталога собранного интерфейса
 //                        (репозиторий sintence-web, его dist/).
 //
@@ -58,7 +71,8 @@ public:
     LiveApiServer(const LiveGameSource& source, std::string web_root, int port = 8777,
                   ProfileService* profiles = nullptr,
                   const PreferencePack* pack = nullptr,
-                  const LobbyService* lobby = nullptr);
+                  const LobbyService* lobby = nullptr,
+                  MatchStore* store = nullptr, HistoryService* history = nullptr);
     ~LiveApiServer();
 
     LiveApiServer(const LiveApiServer&) = delete;

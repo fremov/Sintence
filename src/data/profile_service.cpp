@@ -6,7 +6,7 @@
 
 namespace sintence {
 
-ProfileService::ProfileService(RiotApiClient client)
+ProfileService::ProfileService(std::shared_ptr<RiotApiClient> client)
     : client_(std::move(client)) {
     thread_ = std::thread([this] { Worker(); });
 }
@@ -115,13 +115,13 @@ void ProfileService::Worker() {
         }
 
         for (const auto& [hint_riot_id, hint_puuid] : hints) {
-            client_.RememberPuuid(hint_riot_id, hint_puuid);
+            client_->RememberPuuid(hint_riot_id, hint_puuid);
         }
 
         if (!spectate_puuid.empty()) {
             std::println("лобби: spectator-v5 — состав идущей игры");
-            auto members = client_.LoadActiveGame(spectate_puuid);
-            const int status = client_.LastStatus();
+            auto members = client_->LoadActiveGame(spectate_puuid);
+            const int status = client_->LastStatus();
             std::vector<std::string> riot_ids;
             if (members) {
                 for (const LobbyMember& member : *members) {
@@ -149,7 +149,7 @@ void ProfileService::Worker() {
 
         // Сеть — вне блокировки: пока идёт запрос, интерфейс продолжает
         // забирать уже готовые профили, а не ждёт мьютекс сорок секунд.
-        auto profile = client_.LoadProfile(riot_id);
+        auto profile = client_->LoadProfile(riot_id);
 
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started);

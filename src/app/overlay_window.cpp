@@ -20,6 +20,7 @@
 #include <string>
 
 #include "json.hpp"
+#include "profile_window.h"
 
 using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
@@ -504,6 +505,16 @@ int RunOverlay(const OverlayOptions& options) {
         std::println("PgDn перехватить нечем — панель не открыть");
     }
 
+    // Окно профиля показывается сразу, WebView2 в нём поднимется вместе
+    // с оверлейным — на общем окружении.
+    HWND profile_window = nullptr;
+    if (!options.profile_url.empty()) {
+        ProfileWindowOptions profile_options;
+        profile_options.url = options.profile_url;
+        profile_options.title = options.title;
+        profile_window = CreateProfileWindow(instance, profile_options);
+    }
+
     std::println("PgDn — показать или спрятать панель (клавишу может сменить интерфейс)");
     std::println("журнал событий: overlay.log рядом с exe");
 
@@ -512,12 +523,14 @@ int RunOverlay(const OverlayOptions& options) {
     CreateCoreWebView2EnvironmentWithOptions(
         nullptr, nullptr, nullptr,
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
-            [hwnd, url](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
+            [hwnd, url, profile_window](HRESULT result,
+                                        ICoreWebView2Environment* environment) -> HRESULT {
                 if (FAILED(result) || environment == nullptr) {
                     std::println("WebView2 не поднялся: рантайм не установлен?");
                     PostMessageW(hwnd, WM_CLOSE, 0, 0);
                     return S_OK;
                 }
+                AttachProfileWebView(profile_window, environment);
                 environment->CreateCoreWebView2Controller(
                     hwnd,
                     Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(

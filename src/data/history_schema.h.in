@@ -1,0 +1,9 @@
+// Сгенерировано CMake из project/data/history_schema.sql — не править руками.
+// Схема живёт в .sql-файле: он же потом уедет на сервер.
+#pragma once
+
+namespace sintence {
+
+inline constexpr const char* kHistorySchema = R"sintence_sql(@SINTENCE_HISTORY_SCHEMA@)sintence_sql";
+
+}  // namespace sintence

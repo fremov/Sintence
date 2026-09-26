@@ -27,6 +27,7 @@
 #include <print>
 #include <string>
 
+#include "history_service.h"
 #include "live_api_server.h"
 #include "live_client_source.h"
 #include "lobby_service.h"
@@ -34,6 +35,7 @@
 #include "preference_pack.h"
 #include "profile_service.h"
 #include "riot_api_client.h"
+#include "sqlite_match_store.h"
 
 namespace {
 
@@ -83,11 +85,14 @@ int main() {
     // Ключ Riot: переменная окружения SINTENCE_RIOT_KEY или файл
     // %LOCALAPPDATA%\Sintence\riot_key.txt. Без ключа приложение работает,
     // просто без рангов и мастери: /api/profiles отвечает 501.
+    // Клиент Riot один на всех: профили лобби и история окна профиля идут
+    // через один ограничитель запросов — лимит ключа общий.
+    std::shared_ptr<sintence::RiotApiClient> riot;
     std::unique_ptr<sintence::ProfileService> profiles;
     if (const auto key = sintence::LoadRiotApiKey()) {
-        profiles = std::make_unique<sintence::ProfileService>(
-            sintence::RiotApiClient(*key, "ru.api.riotgames.com",
-                                    "europe.api.riotgames.com"));
+        riot = std::make_shared<sintence::RiotApiClient>(*key, "ru.api.riotgames.com",
+                                                         "europe.api.riotgames.com");
+        profiles = std::make_unique<sintence::ProfileService>(riot);
         std::println("ключ Riot найден: профили игроков включены");
     } else {
         std::println("ключа Riot нет — профили выключены "
@@ -121,6 +126,22 @@ int main() {
                      web_dir);
     }
 
+    // История матчей игроков — окно профиля. Сейчас SQLite на машине
+    // разработчика (project/data/history.sqlite, путь меняет
+    // SINTENCE_HISTORY_DB), потом — сервер: адаптер сменится, интерфейс нет.
+    std::string history_path = EnvOrEmpty("SINTENCE_HISTORY_DB");
+    if (history_path.empty()) {
+        history_path = SINTENCE_HISTORY_DB;
+    }
+    std::unique_ptr<sintence::SqliteMatchStore> store = sintence::SqliteMatchStore::Open(history_path);
+    std::unique_ptr<sintence::HistoryService> history;
+    if (store && riot) {
+        history = std::make_unique<sintence::HistoryService>(riot, *store, profiles.get());
+        std::println("история матчей: {}", history_path);
+    } else if (!store) {
+        std::println("история матчей недоступна: не открыть {}", history_path);
+    }
+
     // Состав до начала матча: выбор чемпиона из клиента League (LCU)
     // и экран загрузки через spectator-v5. Работает и без ключа Riot —
     // тогда без профилей. Клиент не запущен — просто пустое лобби.
@@ -128,7 +149,8 @@ int main() {
 
     const int port = PortFromEnv();
     sintence::LiveApiServer server(live_source, web_dir, port, profiles.get(),
-                                   pack ? &*pack : nullptr, &lobby);
+                                   pack ? &*pack : nullptr, &lobby, store.get(),
+                                   history.get());
     if (!server.Start()) {
         std::println("не удалось занять порт {} — он уже кем-то занят", server.Port());
         return 1;
@@ -146,6 +168,15 @@ int main() {
         std::println("окно показывает {} (SINTENCE_UI_URL)", ui_url);
     } else {
         std::println("интерфейс: {}", web_dir);
+    }
+    // Окно профиля — та же страница с маршрутом #/profile.
+    // SINTENCE_NO_PROFILE=1 — только оверлей, как раньше.
+    if (EnvOrEmpty("SINTENCE_NO_PROFILE").empty()) {
+        std::wstring base = options.url;
+        if (const auto hash = base.find(L'#'); hash != std::wstring::npos) {
+            base.resize(hash);
+        }
+        options.profile_url = base + L"#/profile";
     }
     return sintence::RunOverlay(options);
 }

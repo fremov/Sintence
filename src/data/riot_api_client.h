@@ -1,6 +1,7 @@
 #ifndef SINTENCE_DATA_RIOT_API_CLIENT_H
 #define SINTENCE_DATA_RIOT_API_CLIENT_H
 
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -8,6 +9,7 @@
 #include <vector>
 
 #include "lobby.h"           // LobbyMember из core/
+#include "match_history.h"   // SummonerInfo из core/
 #include "player_profile.h"  // PlayerProfile из core/
 #include "rate_limiter.h"
 
@@ -105,9 +107,30 @@ public:
     // участников (RememberPuuid).
     std::optional<std::vector<LobbyMember>> LoadActiveGame(const std::string& self_puuid);
 
+    // --- Окно профиля ------------------------------------------------------
+
+    // Иконка и уровень призывателя (summoner-v4, платформенный хост).
+    std::optional<SummonerInfo> LoadSummoner(const std::string& puuid);
+
+    // Все ранговые записи игрока (одиночная, гибкая). Пустой вектор —
+    // не играл в ранговых; nullopt — не смогли узнать.
+    std::optional<std::vector<RankedStats>> LoadRankedEntries(const std::string& puuid);
+
+    // Id последних матчей, новые первыми: start — сколько пропустить,
+    // count — сколько взять (Riot отдаёт до 100 за раз). Региональный хост.
+    std::optional<std::vector<std::string>> LoadMatchIds(const std::string& puuid, int start,
+                                                         int count);
+
+    // Сырой матч и сырой timeline: хранилище держит ответ Riot целиком.
+    std::optional<std::string> LoadMatchJson(const std::string& match_id);
+    std::optional<std::string> LoadTimelineJson(const std::string& match_id);
+
     // HTTP-статус последнего ответа Riot (0 — сети не было). Для диагностики:
     // «spectator-v5 ответил 404» и «не ответил вовсе» лечатся по-разному.
-    int LastStatus() const { return last_status_; }
+    int LastStatus() const {
+        const std::lock_guard<std::recursive_mutex> lock(mutex_);
+        return last_status_;
+    }
 
 private:
     // Один GET с заголовком X-Riot-Token.
@@ -125,6 +148,12 @@ private:
     std::string regional_host_;
     RateLimiter limiter_;
     int last_status_ = 0;
+
+    // Клиентом пользуются два фоновых потока: профили лобби и история
+    // окна профиля. Один клиент — один ограничитель: лимит ключа общий,
+    // и два независимых ограничителя вдвоём превысили бы его. Рекурсивный,
+    // потому что LoadProfile зовёт ResolvePuuid, а тот — Get.
+    mutable std::recursive_mutex mutex_;
     std::unordered_map<std::string, std::string> puuid_cache_;
     std::unordered_map<std::string, std::string> platform_cache_;  // puuid -> хост
 };

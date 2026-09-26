@@ -72,6 +72,10 @@ struct Lobby {
 
     std::vector<LobbyMember> members;
     std::vector<int> bans;     // id забаненных чемпионов, обе команды
+
+    // Свой Riot ID из клиента League: окно профиля по умолчанию
+    // показывает историю того, кто сидит за компьютером.
+    std::string self_riot_id;
 };
 
 }  // namespace sintence

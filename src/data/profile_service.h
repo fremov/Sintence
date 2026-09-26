@@ -3,6 +3,7 @@
 
 #include <condition_variable>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -37,7 +38,9 @@ public:
         bool running = false;  // идёт ли докачка прямо сейчас
     };
 
-    explicit ProfileService(RiotApiClient client);
+    // Клиент общий с окном профиля (HistoryService): один ограничитель
+    // запросов на ключ.
+    explicit ProfileService(std::shared_ptr<RiotApiClient> client);
     ~ProfileService();
 
     ProfileService(const ProfileService&) = delete;
@@ -78,7 +81,7 @@ public:
 private:
     void Worker();
 
-    RiotApiClient client_;  // трогает только фоновый поток
+    std::shared_ptr<RiotApiClient> client_;
 
     mutable std::mutex mutex_;
     std::condition_variable wake_;

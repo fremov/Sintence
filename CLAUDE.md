@@ -2,8 +2,8 @@
 
 Sintence — десктопное приложение под Windows для League of Legends: оверлей с табло
 живого матча, профили игроков лобби (ранг, мастери), советы активному игроку
-по сборке в его матчапе и статистика по истории матчей. Всё работает локально,
-без серверов и без телеметрии.
+по сборке в его матчапе и статистика по истории матчей. Пока всё работает
+локально, без телеметрии; данные со временем переедут на сервер.
 
 Отвечай и пиши файлы по-русски. Ключевые слова C++, имена типов и библиотек
 остаются английскими.
@@ -21,7 +21,7 @@ Sintence — десктопное приложение под Windows для Lea
 
 ## Сборка и тесты
 
-MSVC (Visual Studio 2026, C++23), CMake ≥ 3.20, vcpkg (cpp-httplib + OpenSSL, WebView2),
+MSVC (Visual Studio 2026, C++23), CMake ≥ 3.20, vcpkg (cpp-httplib + OpenSSL, WebView2, SQLite),
 Node.js 20+. `doctest` и `nlohmann/json` лежат в `third_party/`.
 
 ```powershell
@@ -48,7 +48,9 @@ build\tests\Debug\sintence_tests.exe --source-file="*rate_limiter*"   # одна
 - Переменные окружения `sintence.exe`: `SINTENCE_WEB_DIR` (где собранный интерфейс,
   по умолчанию `../sintence-web/dist`), `SINTENCE_UI_URL` (показать в окне адрес,
   например живой Vite), `SINTENCE_PORT` (порт вместо 8777 — отладочная копия рядом
-  с рабочей). Рабочий `build\...\sintence.exe` часто запущен и держит exe и порт:
+  с рабочей), `SINTENCE_HISTORY_DB` (база истории матчей вместо
+  `project/data/history.sqlite`), `SINTENCE_NO_PROFILE=1` (без окна профиля,
+  только оверлей). Рабочий `build\...\sintence.exe` часто запущен и держит exe и порт:
   отладочную сборку делай в `build-noadmin` и запускай с `SINTENCE_PORT=8778`.
 
 ## Архитектура
@@ -57,7 +59,7 @@ build\tests\Debug\sintence_tests.exe --source-file="*rate_limiter*"   # одна
 src/core/      доменные типы, ни JSON, ни HTTP, ни файлов
 src/data/      адаптеры: файлы, Match-V5, Live Client, Riot API, пак предпочтений
 src/analysis/  метрики — чистые функции над типами core/
-src/app/       main, HTTP-сервер 127.0.0.1:8777, окно WebView2
+src/app/       main, HTTP-сервер 127.0.0.1:8777, окна WebView2: оверлей и профиль
 scripts/       Python (только stdlib): краулер Riot API -> SQLite -> пак
 ```
 
@@ -71,18 +73,23 @@ scripts/       Python (только stdlib): краулер Riot API -> SQLite -
 - Сервер слушает только `127.0.0.1`, никогда `0.0.0.0`.
 - Ключ Riot не попадает в репозиторий, бинарник, журнал и фронтенд. Читается
   из `SINTENCE_RIOT_KEY` или `%LOCALAPPDATA%\Sintence\riot_key.txt`.
-- Приложение не знает про SQLite: читает `project/data/packs/index.json`,
-  затем пак, на который тот указывает.
-- **Бэкенд не нужен.** Однопользовательское приложение само ходит в Riot API
-  и хранит файлы локально. Сервер понадобится только при распространении
-  другим людям — ради production-ключа, который нельзя класть в бинарник.
+- Пак предпочтений приложение читает файлом: `project/data/packs/index.json`,
+  затем пак, на который тот указывает. База краулера (`base.sqlite`) ему
+  не видна.
+- **Данные будут жить на сервере** (MySQL или другая СУБД), у пользователя —
+  только программа. Сервера пока нет, и всё готовится к переезду: история
+  матчей игроков — за интерфейсом `core/match_store.h`, сейчас это SQLite
+  `project/data/history.sqlite` (`data/sqlite_match_store`, схема
+  `project/data/history_schema.sql` — общее подмножество SQL). Новое
+  хранилище — новый адаптер, а не правки вокруг. ARCHITECTURE.md §12.
 
 Локальный API приложения: `/api/health` (версия контракта `kApiVersion`, включённые
 функции), `/api/live` (табло), `/api/lobby` (выбор чемпиона из LCU, экран загрузки из
 spectator-v5), `/api/profiles` (501 без ключа, без матча отдаёт готовые),
 `/api/preferences` (советы активному игроку по табло, а до матча — по параметрам
 `?champion=&role=&enemies=`; роль `NONE` заменяется самой частой по паку,
-`roleSource: "pack"`).
+`roleSource: "pack"`), окно профиля — `/api/profile`, `/api/matches`,
+`/api/matches/{id}[/timeline]` (история из `HistoryService`, 501 без ключа).
 
 LCU (клиент League): чтение — `LobbyService`; запись — только `data/lcu_actions`
 (страница рун и свои заклинания) и **только по клику** в интерфейсе, никогда

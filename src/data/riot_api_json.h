@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "lobby.h"           // LobbyMember из core/
+#include "match_history.h"   // SummonerInfo из core/
 #include "player_profile.h"  // RankedStats, ChampionMastery из core/
 
 // data/riot_api_json — разбор ответов Riot API в типы core/.
@@ -141,6 +142,15 @@ std::optional<std::string> PlatformHost(std::string_view platform_id);
 //   - участник без puuid и без riotId пропускается (бот).
 std::optional<std::vector<LobbyMember>> ParseActiveGame(std::string_view json_text,
                                                         std::string_view self_puuid);
+
+// GET /lol/summoner/v4/summoners/by-puuid/{puuid}:
+//   {"profileIconId": 5367, "summonerLevel": 148, ...} -> SummonerInfo.
+// Нет обоих полей — nullopt.
+std::optional<SummonerInfo> ParseSummonerInfo(std::string_view json_text);
+
+// GET /lol/match/v5/matches/by-puuid/{puuid}/ids -> ["RU_1", "RU_2", ...],
+// новые первыми. Не массив — nullopt; не строки внутри пропускаются.
+std::optional<std::vector<std::string>> ParseMatchIds(std::string_view json_text);
 
 }  // namespace sintence
 

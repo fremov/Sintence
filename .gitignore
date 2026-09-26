@@ -45,4 +45,8 @@ build-noadmin/
 # и в репозиторий попадает.
 project/data/base.sqlite
 project/data/base.sqlite-*
+# История матчей игроков (окно профиля). До сервера — локальный файл
+# разработчика; схема в project/data/history_schema.sql в репозитории.
+project/data/history.sqlite
+project/data/history.sqlite-*
 project/data/static/

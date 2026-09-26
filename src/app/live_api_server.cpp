@@ -1,6 +1,8 @@
 #include "live_api_server.h"
 
+#include <algorithm>
 #include <atomic>
+#include <charconv>
 #include <format>
 #include <print>
 #include <thread>
@@ -11,6 +13,8 @@
 
 #include "json.hpp"
 #include "lcu_actions.h"
+#include "profile_summary.h"
+#include "timeline_json.h"
 
 namespace sintence {
 
@@ -260,6 +264,106 @@ std::string ActionToJson(const ActionResult& result) {
     }.dump();
 }
 
+nlohmann::json RankedToJson(const std::optional<RankedStats>& ranked) {
+    if (!ranked) {
+        return nullptr;
+    }
+    return {
+        {"tier", ranked->tier},
+        {"division", ranked->division},
+        {"leaguePoints", ranked->league_points},
+        {"wins", ranked->wins},
+        {"losses", ranked->losses},
+    };
+}
+
+// Участник матча. puuid наружу не отдаём — isSelf говорит, кто «я».
+nlohmann::json ParticipantToJson(const MatchParticipant& p, bool is_self) {
+    return {
+        {"riotId", p.riot_id},
+        {"teamId", p.team_id},
+        {"win", p.win},
+        {"championId", p.champion_id},
+        {"champion", p.champion},
+        {"role", p.role},
+        {"champLevel", p.champ_level},
+        {"kills", p.kills},
+        {"deaths", p.deaths},
+        {"assists", p.assists},
+        {"cs", p.cs},
+        {"gold", p.gold},
+        {"damageDealt", p.damage_dealt},
+        {"damageTaken", p.damage_taken},
+        {"visionScore", p.vision_score},
+        {"wardsPlaced", p.wards_placed},
+        {"wardsKilled", p.wards_killed},
+        {"items", p.items},
+        {"spell1", p.spell1},
+        {"spell2", p.spell2},
+        {"keystone", p.keystone},
+        {"primaryStyle", p.primary_style},
+        {"subStyle", p.sub_style},
+        {"isSelf", is_self},
+    };
+}
+
+nlohmann::json MatchToJson(const MatchDetail& match, const std::string& self_puuid) {
+    auto participants = nlohmann::json::array();
+    for (const MatchParticipant& p : match.participants) {
+        participants.push_back(ParticipantToJson(p, !self_puuid.empty() && p.puuid == self_puuid));
+    }
+    return {
+        {"matchId", match.match_id},
+        {"queueId", match.queue_id},
+        {"gameMode", match.game_mode},
+        {"patch", match.patch},
+        {"startedAt", match.started_at_ms},
+        {"durationS", match.duration_seconds},
+        {"participants", std::move(participants)},
+    };
+}
+
+nlohmann::json SummaryToJson(const ProfileSummary& summary) {
+    auto roles = nlohmann::json::array();
+    for (const ProfileRole& role : summary.roles) {
+        roles.push_back({{"role", role.role}, {"games", role.games}, {"wins", role.wins}});
+    }
+    auto champions = nlohmann::json::array();
+    for (const ProfileChampion& c : summary.champions) {
+        champions.push_back({
+            {"championId", c.champion_id},
+            {"champion", c.champion},
+            {"games", c.games},
+            {"wins", c.wins},
+            {"kills", c.kills},
+            {"deaths", c.deaths},
+            {"assists", c.assists},
+            {"kda", c.Kda()},
+            {"cs", c.cs},
+            {"durationS", c.duration_seconds},
+        });
+    }
+    return {
+        {"games", summary.games},
+        {"wins", summary.wins},
+        {"roles", std::move(roles)},
+        {"champions", std::move(champions)},
+    };
+}
+
+int IntParam(const httplib::Request& request, const char* name, int fallback, int low, int high) {
+    const std::string text = request.get_param_value(name);
+    if (text.empty()) {
+        return fallback;
+    }
+    int value = fallback;
+    const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (result.ec != std::errc{}) {
+        return fallback;
+    }
+    return std::clamp(value, low, high);
+}
+
 std::string SideName(LobbySide side) {
     return side == LobbySide::Ally ? "ALLY" : "ENEMY";
 }
@@ -293,6 +397,7 @@ std::string LobbyToJson(const Lobby& lobby) {
         {"note", lobby.note},
         {"bans", lobby.bans},
         {"members", std::move(members)},
+        {"selfRiotId", lobby.self_riot_id},
     };
     return doc.dump();
 }
@@ -424,26 +529,40 @@ struct LiveApiServer::Impl {
     ProfileService* profiles;
     const PreferencePack* pack;
     const LobbyService* lobby;
+    MatchStore* store;
+    HistoryService* history;
     LcuActions actions;
     httplib::Server server;
     std::thread thread;
 
     Impl(const LiveGameSource& source_in, std::string web_root_in, int port_in,
          ProfileService* profiles_in, const PreferencePack* pack_in,
-         const LobbyService* lobby_in)
+         const LobbyService* lobby_in, MatchStore* store_in, HistoryService* history_in)
         : source(source_in),
           web_root(std::move(web_root_in)),
           port(port_in),
           profiles(profiles_in),
           pack(pack_in),
-          lobby(lobby_in) {}
+          lobby(lobby_in),
+          store(store_in),
+          history(history_in) {}
+
+    // Чью историю показывать: riotId из запроса или свой из клиента League.
+    std::string RiotIdOf(const httplib::Request& request) const {
+        std::string riot_id = request.get_param_value("riotId");
+        if (riot_id.empty() && lobby != nullptr) {
+            riot_id = lobby->Snapshot().self_riot_id;
+        }
+        return riot_id;
+    }
 };
 
 LiveApiServer::LiveApiServer(const LiveGameSource& source, std::string web_root, int port,
                              ProfileService* profiles, const PreferencePack* pack,
-                             const LobbyService* lobby)
-    : impl_(std::make_unique<Impl>(source, std::move(web_root), port, profiles, pack,
-                                   lobby)) {}
+                             const LobbyService* lobby, MatchStore* store,
+                             HistoryService* history)
+    : impl_(std::make_unique<Impl>(source, std::move(web_root), port, profiles, pack, lobby,
+                                   store, history)) {}
 
 LiveApiServer::~LiveApiServer() {
     Stop();
@@ -464,6 +583,7 @@ bool LiveApiServer::Start() {
             {"apiVersion", kApiVersion},
             {"profiles", impl_->profiles != nullptr},
             {"preferences", impl_->pack != nullptr},
+            {"history", impl_->store != nullptr && impl_->history != nullptr},
             {"game", impl_->source.IsAvailable()},
         };
         if (impl_->pack != nullptr) {
@@ -641,6 +761,148 @@ bool LiveApiServer::Start() {
         const MatchSide self{me->champion_key, me->champion_name, me->position};
         response.set_content(
             BuildPreferences(*impl_->pack, me_id, self, enemies, tier_of(me_id)).dump(),
+            "application/json");
+    });
+
+    // --- Окно профиля: история матчей -----------------------------------
+
+    const auto history_ready = [this](httplib::Response& response) {
+        response.set_header("Access-Control-Allow-Origin", "*");
+        if (impl_->store == nullptr || impl_->history == nullptr) {
+            response.status = 501;
+            response.set_content(R"({"error":"no riot api key or match store"})",
+                                 "application/json");
+            return false;
+        }
+        return true;
+    };
+
+    impl_->server.Get("/api/profile", [this, history_ready](const httplib::Request& request,
+                                                           httplib::Response& response) {
+        if (!history_ready(response)) {
+            return;
+        }
+        const std::string riot_id = impl_->RiotIdOf(request);
+        if (riot_id.empty()) {
+            response.status = 400;
+            response.set_content(R"({"error":"no riot id: клиент League не запущен"})",
+                                 "application/json");
+            return;
+        }
+        const int depth = IntParam(request, "depth", 50, 1, 300);
+        const int queue = IntParam(request, "queue", 0, 0, 100000);
+        impl_->history->Request(riot_id, depth);
+
+        const auto status = impl_->history->Status(riot_id);
+        nlohmann::json doc;
+        doc["riotId"] = riot_id;
+        doc["error"] = status ? status->error : "";
+        doc["summoner"] = {
+            {"profileIconId", status ? status->summoner.profile_icon_id : 0},
+            {"level", status ? status->summoner.level : 0},
+        };
+        doc["solo"] = status ? RankedToJson(status->solo) : nlohmann::json(nullptr);
+        doc["flex"] = status ? RankedToJson(status->flex) : nlohmann::json(nullptr);
+        doc["progress"] = {
+            {"depth", status ? status->depth : depth},
+            {"idsKnown", status ? status->ids_known : 0},
+            {"stored", status ? std::min(status->stored, status->depth) : 0},
+            {"running", status ? status->running : true},
+        };
+        ProfileSummary summary;
+        if (status && !status->puuid.empty()) {
+            summary = SummarizeProfile(
+                impl_->store->RecentMatches(status->puuid, 0, status->depth, queue),
+                status->puuid);
+        }
+        doc["summary"] = SummaryToJson(summary);
+        response.set_content(doc.dump(), "application/json");
+    });
+
+    impl_->server.Get("/api/matches", [this, history_ready](const httplib::Request& request,
+                                                           httplib::Response& response) {
+        if (!history_ready(response)) {
+            return;
+        }
+        const auto status = impl_->history->Status(impl_->RiotIdOf(request));
+        auto matches = nlohmann::json::array();
+        if (status && !status->puuid.empty()) {
+            const int offset = IntParam(request, "offset", 0, 0, 10000);
+            const int limit = IntParam(request, "limit", 20, 1, 100);
+            const int queue = IntParam(request, "queue", 0, 0, 100000);
+            for (const MatchDetail& match :
+                 impl_->store->RecentMatches(status->puuid, offset, limit, queue)) {
+                matches.push_back(MatchToJson(match, status->puuid));
+            }
+        }
+        response.set_content(nlohmann::json{{"matches", std::move(matches)}}.dump(),
+                             "application/json");
+    });
+
+    impl_->server.Get(R"(/api/matches/([A-Za-z0-9_]+))", [this, history_ready](
+                                                               const httplib::Request& request,
+                                                               httplib::Response& response) {
+        if (!history_ready(response)) {
+            return;
+        }
+        const auto match = impl_->store->LoadMatch(request.matches[1]);
+        if (!match) {
+            response.status = 404;
+            response.set_content(R"({"error":"match not stored"})", "application/json");
+            return;
+        }
+        const auto status = impl_->history->Status(impl_->RiotIdOf(request));
+        response.set_content(MatchToJson(*match, status ? status->puuid : "").dump(),
+                             "application/json");
+    });
+
+    impl_->server.Get(R"(/api/matches/([A-Za-z0-9_]+)/timeline)", [this, history_ready](
+                                                                        const httplib::Request& request,
+                                                                        httplib::Response& response) {
+        if (!history_ready(response)) {
+            return;
+        }
+        const std::string match_id = request.matches[1];
+        const auto raw = impl_->store->LoadTimeline(match_id);
+        if (!raw) {
+            if (impl_->history->TimelineFailed(match_id) && !request.has_param("retry")) {
+                response.status = 502;
+                response.set_content(R"({"error":"timeline not loaded from riot"})",
+                                     "application/json");
+                return;
+            }
+            // Timeline — второй запрос к Riot на матч; качается только для
+            // открытых подробностей. Интерфейс спросит ещё раз.
+            impl_->history->RequestTimeline(match_id, request.has_param("retry"));
+            response.status = 202;
+            response.set_content(R"({"status":"pending"})", "application/json");
+            return;
+        }
+        const auto timeline = ParseMatchTimeline(*raw);
+        const auto match = impl_->store->LoadMatch(match_id);
+        if (!timeline || !match) {
+            response.status = 500;
+            response.set_content(R"({"error":"timeline not parsed"})", "application/json");
+            return;
+        }
+        auto participants = nlohmann::json::array();
+        for (const TimelineParticipant& t : timeline->participants) {
+            const MatchParticipant* p = match->Find(t.puuid);
+            auto purchases = nlohmann::json::array();
+            for (const TimelinePurchase& purchase : t.purchases) {
+                purchases.push_back({{"itemId", purchase.item_id}, {"minute", purchase.minute}});
+            }
+            participants.push_back({
+                {"championId", p ? p->champion_id : 0},
+                {"riotId", p ? p->riot_id : ""},
+                {"teamId", p ? p->team_id : 0},
+                {"skills", t.skills},
+                {"purchases", std::move(purchases)},
+            });
+        }
+        response.set_content(
+            nlohmann::json{{"goldDiff", timeline->gold_diff}, {"participants", std::move(participants)}}
+                .dump(),
             "application/json");
     });
 

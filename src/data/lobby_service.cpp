@@ -92,6 +92,10 @@ void LobbyService::Tick() {
         }
     }
 
+    if (self_) {
+        next.self_riot_id = self_->riot_id;
+    }
+
     if (next.phase == "ChampSelect") {
         TickChampSelect(next);
     } else if (InGamePhase(next.phase)) {

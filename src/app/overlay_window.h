@@ -31,6 +31,10 @@ struct OverlayOptions {
     // (90% от него), поэтому на 1920x1080 панель не уезжает за край.
     int width = 2240;
     int height = 1280;
+
+    // Окно профиля (app/profile_window) — главное окно приложения: с ним
+    // оверлей живёт до его закрытия. Пусто — только оверлей, выход по Ctrl+C.
+    std::wstring profile_url;
 };
 
 // Создаёт окно СКРЫТЫМ, поднимает WebView2 и крутит цикл сообщений.
@@ -53,7 +57,7 @@ struct OverlayOptions {
 //
 // Права администратора нужны, чтобы окно поднималось поверх игры с анти-читом
 // (app/sintence.manifest и /MANIFESTUAC в src/CMakeLists.txt). Выход из
-// программы — Ctrl+C в консоли.
+// программы — закрыть окно профиля или Ctrl+C в консоли.
 int RunOverlay(const OverlayOptions& options);
 
 }  // namespace sintence

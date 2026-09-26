@@ -276,3 +276,25 @@ TEST_CASE("PlatformHost собирает хост из платформенно�
     CHECK(PlatformHost("na1").value() == "na1.api.riotgames.com");
     CHECK_FALSE(PlatformHost("").has_value());
 }
+
+TEST_CASE("ParseSummonerInfo: иконка и уровень") {
+    const auto info = sintence::ParseSummonerInfo(R"({
+      "puuid": "8yv1CdT9", "profileIconId": 5367, "revisionDate": 1750000000000,
+      "summonerLevel": 412
+    })");
+    REQUIRE(info.has_value());
+    CHECK(info->profile_icon_id == 5367);
+    CHECK(info->level == 412);
+    CHECK_FALSE(sintence::ParseSummonerInfo("[]").has_value());
+    CHECK_FALSE(sintence::ParseSummonerInfo("мусор").has_value());
+}
+
+TEST_CASE("ParseMatchIds: массив строк, новые первыми") {
+    const auto ids = sintence::ParseMatchIds(R"(["RU_3", "RU_2", "RU_1"])");
+    REQUIRE(ids.has_value());
+    REQUIRE(ids->size() == 3);
+    CHECK((*ids)[0] == "RU_3");
+    CHECK(sintence::ParseMatchIds("[]").value().empty());
+    CHECK_FALSE(sintence::ParseMatchIds(R"({"ids": []})").has_value());
+    CHECK(sintence::ParseMatchIds(R"(["RU_1", 2])").value().size() == 1);
+}
