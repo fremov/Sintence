@@ -31,8 +31,7 @@ target_include_directories(sintence_lib PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/analysis")
 
 # MatchFile работает с fopen напрямую и владеет файлом сам.
-# MSVC считает fopen устаревшим и требует fopen_s, которого нет в стандарте;
-# это определение было в сборке задачи 2.1 и переехало сюда вместе с кодом.
+# MSVC считает fopen устаревшим и требует fopen_s, которого нет в стандарте.
 if(MSVC)
     target_compile_definitions(sintence_lib PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()

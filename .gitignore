@@ -18,7 +18,7 @@ scripts/project/
 .env
 *.key
 
-# Артефакты ручной сборки экспериментов темы 0
+# Артефакты ручной сборки вне CMake
 *.obj
 *.exe
 *.pdb
@@ -26,12 +26,6 @@ scripts/project/
 *.o
 *.a
 *.out
-theory/**/experiments/**/a.out
-theory/**/experiments/**/main
-
-# Страница теории собирается из theory/*/THEORY.md скриптом scripts/build_theory.py
-# на каждой сборке. Исходник — Markdown, он и лежит в репозитории.
-theory/index.html
 
 # IDE
 .vs/
@@ -46,13 +40,6 @@ web/dist/
 # vcpkg ставит зависимости по манифесту в каталог сборки.
 vcpkg_installed/
 build-noadmin/
-
-# Учебные материалы курса: к продукту отношения не имеют, история и
-# состояние обучения остаются локально.
-PROGRESS.md
-REVIEW.md
-CLAUDE.md
-.claude/
 
 # База матчей и статика Data Dragon: гигабайты, пересобираются краулером.
 # Источник правды для приложения — пак в project/data/packs, он маленький
