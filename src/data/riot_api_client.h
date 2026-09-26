@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "lobby.h"           // LobbyMember из core/
 #include "player_profile.h"  // PlayerProfile из core/
 #include "rate_limiter.h"
 
@@ -93,6 +94,21 @@ public:
     // игроки, по которым не вышло вообще ничего, пропускаются.
     std::vector<PlayerProfile> LoadProfiles(const std::vector<std::string>& riot_ids);
 
+    // Запомнить puuid, уже известный из другого источника (клиент League,
+    // spectator-v5): тогда account-v1 для этого Riot ID не вызывается,
+    // и профиль стоит два запроса вместо трёх.
+    void RememberPuuid(const std::string& riot_id, const std::string& puuid);
+
+    // Состав идущей игры по своему puuid: spectator-v5 на платформенном
+    // хосте. Отвечает уже на экране загрузки. Игры нет (404) или она не
+    // наблюдаема (Practice Tool) — nullopt. Заодно запоминает puuid всех
+    // участников (RememberPuuid).
+    std::optional<std::vector<LobbyMember>> LoadActiveGame(const std::string& self_puuid);
+
+    // HTTP-статус последнего ответа Riot (0 — сети не было). Для диагностики:
+    // «spectator-v5 ответил 404» и «не ответил вовсе» лечатся по-разному.
+    int LastStatus() const { return last_status_; }
+
 private:
     // Один GET с заголовком X-Riot-Token.
     //
@@ -108,6 +124,7 @@ private:
     std::string fallback_platform_host_;
     std::string regional_host_;
     RateLimiter limiter_;
+    int last_status_ = 0;
     std::unordered_map<std::string, std::string> puuid_cache_;
     std::unordered_map<std::string, std::string> platform_cache_;  // puuid -> хост
 };

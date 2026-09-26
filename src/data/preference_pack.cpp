@@ -98,6 +98,7 @@ std::vector<PreferenceVariant> ParseVariants(const nlohmann::json& parent,
         variant.winrate_low = GetDouble(raw, "winrateLow").value_or(0.0);
         variant.steps = ParseStrings(raw, "steps");
         variant.item_ids = ParseInts(raw, "itemIds");
+        variant.spell_ids = ParseInts(raw, "spellIds");
         variant.page = ParsePage(raw);
         variants.push_back(std::move(variant));
     }
@@ -170,6 +171,7 @@ std::optional<PreferencePack> PreferencePack::LoadFromJson(std::string_view json
         bucket.rune_pages = ParseVariants(raw, "runePages");
         bucket.skill_orders = ParseVariants(raw, "skillOrders");
         bucket.item_chains = ParseVariants(raw, "itemChains");
+        bucket.summoner_spells = ParseVariants(raw, "summonerSpells");
 
         if (bucket.champion.empty() || bucket.role.empty()) {
             continue;

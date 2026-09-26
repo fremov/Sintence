@@ -5,6 +5,7 @@
 #include <string>
 
 #include "live_game.h"         // интерфейс LiveGameSource
+#include "lobby_service.h"     // LobbyService из data/
 #include "preference_pack.h"   // PreferencePack из data/
 #include "profile_service.h"   // ProfileService из data/
 
@@ -19,12 +20,25 @@
 //   GET /api/live     -> 200 + JSON снимка матча, либо 503, если матча нет.
 //                        503, а не 404: ресурс существует, он временно
 //                        недоступен, и клиент должен просто спросить позже.
-//   GET /api/profiles -> 200 + профили игроков лобби (ранг, топ-3 мастери)
-//                        и прогресс докачки; 503, если матча нет, и 501,
-//                        если ключ Riot не задан.
-//   GET /api/preferences -> 200 + предпочтения по каждому игроку лобби:
-//                        руны, порядок скиллов, первый предмет, ядро.
-//                        503, если матча нет, 501, если пак не загружен.
+//   GET /api/profiles -> 200 + готовые профили (ранг, топ-3 мастери) и прогресс
+//                        докачки, с матчем и без; идёт матч — заказывает тех,
+//                        кто на табло. 501, если ключ Riot не задан.
+//   GET /api/lobby    -> 200 + состав до начала матча: выбор чемпиона (LCU)
+//                        и экран загрузки (spectator-v5). phase пустая —
+//                        клиент League не запущен.
+//   GET /api/preferences -> 200 + советы активному игроку против каждого
+//                        противника: руны, порядок прокачки, предметы.
+//                        Идёт матч — по табло; нет матча — по параметрам
+//                        ?champion=Ahri&role=MIDDLE&enemies=Zed,LeeSin
+//                        (выбор чемпиона). 503 — ни того ни другого,
+//                        501 — пак не загружен.
+//   POST /api/champselect/runes  -> записать и выбрать страницу рун;
+//   POST /api/champselect/spells -> выбрать пару заклинаний призывателя.
+//                        Только по клику в интерфейсе; защищены заголовком
+//                        X-Sintence-Action, проверкой Host и Origin — иначе
+//                        любой сайт в браузере мог бы менять руны игрока.
+//                        Всегда 200 с полем status (ok, need_replace, ...),
+//                        403 — запрос не из интерфейса.
 //   GET /*            -> статика из каталога собранного интерфейса
 //                        (репозиторий sintence-web, его dist/).
 //
@@ -40,9 +54,11 @@ public:
     // profiles — служба профилей Riot или nullptr, если ключа нет;
     //            тоже должна жить дольше сервера.
     // pack     — предпочтения по чемпионам или nullptr, если пака нет.
+    // lobby    — состав до начала матча или nullptr.
     LiveApiServer(const LiveGameSource& source, std::string web_root, int port = 8777,
                   ProfileService* profiles = nullptr,
-                  const PreferencePack* pack = nullptr);
+                  const PreferencePack* pack = nullptr,
+                  const LobbyService* lobby = nullptr);
     ~LiveApiServer();
 
     LiveApiServer(const LiveApiServer&) = delete;
@@ -74,6 +90,9 @@ std::string LiveGameToJson(const LiveGame& game);
 //   {"progress": {...}, "profiles": [...]}
 std::string ProfilesToJson(const std::vector<PlayerProfile>& profiles,
                            const ProfileService::Progress& progress);
+
+// Лобби в JSON для /api/lobby. puuid наружу не отдаётся.
+std::string LobbyToJson(const Lobby& lobby);
 
 }  // namespace sintence
 

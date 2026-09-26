@@ -49,3 +49,15 @@ Match-V5 и Account-V1 — публичные данные истории мат
 > of Riot Games or anyone officially involved in producing or managing Riot Games
 > properties. Riot Games and all associated properties are trademarks or
 > registered trademarks of Riot Games, Inc.
+
+## Действия в клиенте League
+
+Sintence меняет в клиенте ровно две вещи: страницу рун и свои заклинания
+призывателя в выборе чемпиона — **и только по явному клику игрока**. Политика
+Riot: продукт не принимает решений за игрока; импорт по кнопке допустим,
+автоматическое действие — нет. Ни выбора чемпиона, ни банов, ни принятия
+матча Sintence не делает. Чужие страницы рун заменяются только с отдельного
+подтверждения, встроенные — никогда. Подробности — `CHAMP_SELECT.md`.
+
+LCU для распространяемого продукта нужно зарегистрировать в Developer Portal
+с перечнем эндпоинтов; игрокам из Кореи такие приложения запрещены.

@@ -298,3 +298,37 @@ TEST_CASE("ParseAllGameData: руны и заклинания призывате
     CHECK(zed.summoner_spells[0].key.empty());
     CHECK(zed.summoner_spells[0].name == "???");
 }
+
+TEST_CASE("ChampionKeyFromRaw: все форматы служебного имени клиента") {
+    using sintence::ChampionKeyFromRaw;
+    CHECK(ChampionKeyFromRaw("game_character_displayname_Zed") == "Zed");
+    // Так клиент прислал Атрокса в Practice Tool — раньше выходило "Name".
+    CHECK(ChampionKeyFromRaw("Character_Aatrox_Name") == "Aatrox");
+    CHECK(ChampionKeyFromRaw("game_character_skin_displayname_Vladimir_5") == "Vladimir");
+    CHECK(ChampionKeyFromRaw("game_character_displayname_MonkeyKing") == "MonkeyKing");
+    CHECK(ChampionKeyFromRaw("game_character_displayname_FiddleSticks") == "FiddleSticks");
+    CHECK(ChampionKeyFromRaw("").empty());
+    CHECK(ChampionKeyFromRaw("game_character_displayname_").empty());
+}
+
+TEST_CASE("ParseAllGameData: ключ из rawSkinName, если rawChampionName не разобрался") {
+    constexpr const char* kOdd = R"({
+      "allPlayers": [
+        {"championName": "Атрокс", "rawChampionName": "Character_Aatrox_Name",
+         "rawSkinName": "game_character_displayname_Aatrox",
+         "riotId": "a#1", "team": "ORDER", "items": [],
+         "scores": {"assists": 0, "creepScore": 0, "deaths": 0, "kills": 0, "wardScore": 0.0}},
+        {"championName": "Кто-то", "rawChampionName": "Character__Name",
+         "rawSkinName": "game_character_skin_displayname_Ahri_3",
+         "riotId": "b#2", "team": "CHAOS", "items": [],
+         "scores": {"assists": 0, "creepScore": 0, "deaths": 0, "kills": 0, "wardScore": 0.0}}
+      ],
+      "gameData": {"gameMode": "PRACTICETOOL", "gameTime": 10.0, "mapName": "Map11"}
+    })";
+
+    const auto game = ParseAllGameData(kOdd);
+    REQUIRE(game.has_value());
+    REQUIRE(game->players.size() == 2);
+    CHECK(game->players[0].champion_key == "Aatrox");
+    CHECK(game->players[1].champion_key == "Ahri");
+}

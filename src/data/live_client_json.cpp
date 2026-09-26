@@ -1,5 +1,7 @@
 #include "live_client_json.h"
 
+#include <algorithm>
+#include <cctype>
 #include <string>
 
 #include "json.hpp"
@@ -72,6 +74,34 @@ std::vector<LiveSummonerSpell> ParseSummonerSpells(const nlohmann::json& player)
 
 }  // namespace
 
+std::string ChampionKeyFromRaw(std::string_view raw) {
+    // Служебные слова в любом регистре: "game", "Character", "Name"...
+    const auto is_service = [](std::string_view part) {
+        std::string lower;
+        for (const char symbol : part) {
+            lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(symbol))));
+        }
+        return lower == "game" || lower == "character" || lower == "displayname" ||
+               lower == "skin" || lower == "name";
+    };
+    const auto is_number = [](std::string_view part) {
+        return !part.empty() &&
+               std::all_of(part.begin(), part.end(),
+                           [](char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; });
+    };
+
+    std::size_t start = 0;
+    while (start <= raw.size()) {
+        const std::size_t end = std::min(raw.find('_', start), raw.size());
+        const std::string_view part = raw.substr(start, end - start);
+        if (!part.empty() && !is_service(part) && !is_number(part)) {
+            return std::string(part);
+        }
+        start = end + 1;
+    }
+    return {};
+}
+
 std::optional<std::vector<LivePlayer>> ParseLivePlayers(
     std::string_view json_text) {
     std::vector<LivePlayer> live_player_stats;
@@ -95,15 +125,14 @@ std::optional<std::vector<LivePlayer>> ParseLivePlayers(
         }
         player.champion_name = *champion_name;
 
-        // rawChampionName = "game_character_displayname_Zed". Каноническое
-        // имя — хвост после последнего подчёркивания; это единственное
-        // место, где клиент отдаёт его нелокализованным.
-        const auto raw_name = GetString(p, "rawChampionName");
-        if (raw_name) {
-            const std::size_t underscore = raw_name->rfind('_');
-            player.champion_key = underscore == std::string::npos
-                                      ? *raw_name
-                                      : raw_name->substr(underscore + 1);
+        // Каноническое имя — только в служебных строках клиента, и формат
+        // у них разный: см. ChampionKeyFromRaw. rawSkinName — запасной
+        // источник, если rawChampionName не разобрался.
+        player.champion_key =
+            ChampionKeyFromRaw(GetString(p, "rawChampionName").value_or(""));
+        if (player.champion_key.empty()) {
+            player.champion_key =
+                ChampionKeyFromRaw(GetString(p, "rawSkinName").value_or(""));
         }
 
         const auto kills = GetInt(scores, "kills");

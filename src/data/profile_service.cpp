@@ -41,6 +41,39 @@ void ProfileService::Request(const std::vector<std::string>& riot_ids) {
     }
 }
 
+void ProfileService::HintPuuid(const std::string& riot_id, const std::string& puuid) {
+    if (riot_id.empty() || puuid.empty()) {
+        return;
+    }
+    const std::lock_guard<std::mutex> lock(mutex_);
+    hints_.emplace_back(riot_id, puuid);
+}
+
+void ProfileService::RequestActiveGame(const std::string& self_puuid) {
+    if (self_puuid.empty()) {
+        return;
+    }
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        if (active_game_request_ == self_puuid) {
+            return;
+        }
+        active_game_request_ = self_puuid;
+    }
+    wake_.notify_one();
+}
+
+ProfileService::ActiveGame ProfileService::LastActiveGame() const {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    return active_game_;
+}
+
+void ProfileService::ResetActiveGame() {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    active_game_ = ActiveGame{};
+    active_game_request_.clear();
+}
+
 std::vector<PlayerProfile> ProfileService::Ready() const {
     const std::lock_guard<std::mutex> lock(mutex_);
     return ready_;
@@ -58,15 +91,57 @@ ProfileService::Progress ProfileService::Status() const {
 void ProfileService::Worker() {
     for (;;) {
         std::string riot_id;
+        std::string spectate_puuid;
+        std::vector<std::pair<std::string, std::string>> hints;
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            wake_.wait(lock, [this] { return stop_ || !queue_.empty(); });
+            wake_.wait(lock, [this] {
+                return stop_ || !queue_.empty() || !active_game_request_.empty();
+            });
             if (stop_) {
                 return;
             }
-            riot_id = std::move(queue_.front());
-            queue_.pop_front();
+            hints.swap(hints_);
+            // Состав игры важнее очередного профиля: он сам заказывает
+            // профили всех десяти, и чем раньше, тем раньше они готовы.
+            if (!active_game_request_.empty()) {
+                spectate_puuid = std::move(active_game_request_);
+                active_game_request_.clear();
+            } else {
+                riot_id = std::move(queue_.front());
+                queue_.pop_front();
+            }
             running_ = true;
+        }
+
+        for (const auto& [hint_riot_id, hint_puuid] : hints) {
+            client_.RememberPuuid(hint_riot_id, hint_puuid);
+        }
+
+        if (!spectate_puuid.empty()) {
+            std::println("лобби: spectator-v5 — состав идущей игры");
+            auto members = client_.LoadActiveGame(spectate_puuid);
+            const int status = client_.LastStatus();
+            std::vector<std::string> riot_ids;
+            if (members) {
+                for (const LobbyMember& member : *members) {
+                    riot_ids.push_back(member.riot_id);
+                }
+                std::println("лобби: в игре {} участников, заказываю профили", members->size());
+            } else {
+                std::println("лобби: spectator-v5 игры не знает (ещё не началась "
+                             "или не наблюдаема)");
+            }
+            {
+                const std::lock_guard<std::mutex> lock(mutex_);
+                running_ = false;
+                active_game_.self_puuid = spectate_puuid;
+                active_game_.attempted = true;
+                active_game_.status = status;
+                active_game_.members = std::move(members);
+            }
+            Request(riot_ids);
+            continue;
         }
 
         std::println("профиль: запрашиваю {}", riot_id);

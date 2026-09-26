@@ -149,9 +149,11 @@ std::optional<std::string> RiotApiClient::Get(const std::string& host,
             std::chrono::steady_clock::now() - started);
 
         if (!response) {
+            last_status_ = 0;
             std::println("riot: нет ответа от {} ({}) за {} мс", host, path, elapsed.count());
             return std::nullopt;
         }
+        last_status_ = response->status;
 
         std::println("riot: {} {} -> {} за {} мс [окно: {}/20 за с, {}/100 за 2 мин]",
                      host, path, response->status, elapsed.count(),
@@ -280,6 +282,37 @@ std::optional<PlayerProfile> RiotApiClient::LoadProfile(std::string_view riot_id
     // Неудача ранга или мастери профиль не отменяет: частичная карточка
     // полезнее пустой.
     return profile;
+}
+
+void RiotApiClient::RememberPuuid(const std::string& riot_id, const std::string& puuid) {
+    if (!riot_id.empty() && !puuid.empty()) {
+        puuid_cache_.insert_or_assign(riot_id, puuid);
+    }
+}
+
+std::optional<std::vector<LobbyMember>> RiotApiClient::LoadActiveGame(
+    const std::string& self_puuid) {
+    if (self_puuid.empty()) {
+        return std::nullopt;
+    }
+    const std::string platform_host = ResolvePlatformHost(self_puuid);
+    const auto body =
+        Get(platform_host, "/lol/spectator/v5/active-games/by-summoner/" + self_puuid);
+    if (!body) {
+        return std::nullopt;
+    }
+    auto members = ParseActiveGame(*body, self_puuid);
+    if (members) {
+        for (const LobbyMember& member : *members) {
+            RememberPuuid(member.riot_id, member.puuid);
+            // Участники одной игры играют на одной платформе: регион
+            // каждого не спрашиваем, это сэкономило бы до десяти запросов.
+            if (!member.puuid.empty()) {
+                platform_cache_.emplace(member.puuid, platform_host);
+            }
+        }
+    }
+    return members;
 }
 
 std::vector<PlayerProfile> RiotApiClient::LoadProfiles(

@@ -68,6 +68,10 @@ struct PreferenceVariant {
     // У порядка прокачки и у страниц рун пусто.
     std::vector<int> item_ids;
 
+    // Пара заклинаний призывателя числовыми id (4 — Скачок, 14 — Воспламенение).
+    // Заполнена только у вариантов summoner_spells.
+    std::vector<int> spell_ids;
+
     // Заполнена только у страниц рун.
     std::optional<RunePage> page;
 };
@@ -86,6 +90,7 @@ struct PreferenceBucket {
     std::vector<PreferenceVariant> rune_pages;
     std::vector<PreferenceVariant> skill_orders;  // Q>E>W>Q>Q
     std::vector<PreferenceVariant> item_chains;   // Youmuu's → Eclipse → ...
+    std::vector<PreferenceVariant> summoner_spells;  // Flash + Ignite
 };
 
 class PreferencePack {

@@ -29,6 +29,7 @@
 
 #include "live_api_server.h"
 #include "live_client_source.h"
+#include "lobby_service.h"
 #include "overlay_window.h"
 #include "preference_pack.h"
 #include "profile_service.h"
@@ -120,9 +121,14 @@ int main() {
                      web_dir);
     }
 
+    // Состав до начала матча: выбор чемпиона из клиента League (LCU)
+    // и экран загрузки через spectator-v5. Работает и без ключа Riot —
+    // тогда без профилей. Клиент не запущен — просто пустое лобби.
+    const sintence::LobbyService lobby(profiles.get());
+
     const int port = PortFromEnv();
     sintence::LiveApiServer server(live_source, web_dir, port, profiles.get(),
-                                   pack ? &*pack : nullptr);
+                                   pack ? &*pack : nullptr, &lobby);
     if (!server.Start()) {
         std::println("не удалось занять порт {} — он уже кем-то занят", server.Port());
         return 1;

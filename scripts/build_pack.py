@@ -43,7 +43,9 @@ DDRAGON = "https://ddragon.leagueoflegends.com"
 # страницей целиком, предметы — цепочкой в порядке покупки.
 # 3: плюс числовые id рун и предметов (keystoneId, primaryIds, itemIds...):
 # по ним интерфейс берёт иконки и названия на языке клиента. Надмножество
-# второй схемы — приложение читает обе.
+# второй схемы — приложение читает обе. Позже в третью схему добавлено
+# поле summonerSpells (пары заклинаний со spellIds) — добавление поля
+# схему не меняет: читатели терпимы к новым полям.
 SCHEMA_VERSION = 3
 
 # Ранговые корзины. Дробить по каждому тиру нельзя: выборка расползается,
@@ -144,6 +146,13 @@ def load_items(version: str):
             not item.get("into"),  # «into» пуст только у законченных предметов
         )
     return items
+
+
+def load_summoners(version: str | None = None) -> dict:
+    """Числовой id заклинания призывателя -> английское имя."""
+    data = fetch_static("summoner.json", version or latest_version()).get("data", {})
+    return {int(spell["key"]): spell["name"] for spell in data.values()
+            if str(spell.get("key", "")).isdigit()}
 
 
 def is_core_item(item_id: int, items: dict) -> bool:
@@ -343,7 +352,8 @@ def build(db: sqlite3.Connection, patch: str, min_games: int,
     query = """
         SELECT p.champion, p.role, m.seed_tier, p.win, p.match_id, p.puuid,
                p.keystone, p.primary_tree, p.sub_tree,
-               p.primary_perks, p.sub_perks, p.stat_perks
+               p.primary_perks, p.sub_perks, p.stat_perks,
+               p.spell1, p.spell2
         FROM participants p
         JOIN matches m ON m.match_id = p.match_id
         WHERE m.patch = ? AND p.role <> ''
@@ -360,7 +370,10 @@ def build(db: sqlite3.Connection, patch: str, min_games: int,
         core = [item for item in purchases.get(f"{match_id}|{puuid}", [])
                 if is_core_item(item, items)]
         skill_seq = skills.get(f"{match_id}|{puuid}", "")
-        page = rune_page(row[6:], runes)
+        page = rune_page(row[6:12], runes)
+        # Пара заклинаний — набор, а не порядок: Скачок на D и Скачок на F —
+        # одна и та же сборка, её раскладку по клавишам выбирает игрок.
+        spells = tuple(sorted(spell for spell in row[12:14] if spell))
 
         # Каждое наблюдение попадает в четыре бакета: против конкретного
         # оппонента и против всех, в своей ранговой корзине и в общей.
@@ -377,6 +390,7 @@ def build(db: sqlite3.Connection, patch: str, min_games: int,
                     "runePages": Distribution(),
                     "skills": Distribution(),
                     "chains": ChainTree(),
+                    "spells": Distribution(),
                 })
                 bucket["games"] += 1
                 bucket["wins"] += win
@@ -386,11 +400,14 @@ def build(db: sqlite3.Connection, patch: str, min_games: int,
                     bucket["skills"].add(skill_seq[:MAX_SKILL_STEPS], win)
                 if core:
                     bucket["chains"].add(core, win)
+                if len(spells) == 2:
+                    bucket["spells"].add(spells, win)
 
-    return render(buckets, patch, min_games, runes, items)
+    return render(buckets, patch, min_games, runes, items, load_summoners())
 
 
-def render(buckets: dict, patch: str, min_games: int, runes: dict, items: dict) -> dict:
+def render(buckets: dict, patch: str, min_games: int, runes: dict, items: dict,
+           summoners: dict) -> dict:
     rune_name = lambda key: runes.get(key, f"#{key}")
     item_name = lambda key: items.get(key, (f"#{key}", 0, set(), False))[0]
 
@@ -421,6 +438,10 @@ def render(buckets: dict, patch: str, min_games: int, runes: dict, items: dict) 
     def skill_variant(key):
         return {"name": ">".join(key), "steps": list(key)}
 
+    def spell_variant(key):
+        names = [summoners.get(spell, f"#{spell}") for spell in key]
+        return {"name": " + ".join(names), "steps": names, "spellIds": list(key)}
+
     out = {}
     for (champion, role, opponent, tier_key), bucket in buckets.items():
         total = bucket["games"]
@@ -437,6 +458,7 @@ def render(buckets: dict, patch: str, min_games: int, runes: dict, items: dict) 
             "runePages": bucket["runePages"].top(total, page_variant),
             "skillOrders": bucket["skills"].top(total, skill_variant),
             "itemChains": bucket["chains"].top(total, chain_variant),
+            "summonerSpells": bucket["spells"].top(total, spell_variant),
         }
     return out
 

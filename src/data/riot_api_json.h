@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "lobby.h"           // LobbyMember из core/
 #include "player_profile.h"  // RankedStats, ChampionMastery из core/
 
 // data/riot_api_json — разбор ответов Riot API в типы core/.
@@ -123,6 +124,23 @@ std::optional<std::string> ParseActiveRegion(std::string_view json_text);
 // Пустая строка на входе — nullopt: иначе получился бы хост
 // ".api.riotgames.com", и разбираться пришлось бы уже с ошибкой DNS.
 std::optional<std::string> PlatformHost(std::string_view platform_id);
+
+// Разбирает ответ GET /lol/spectator/v5/active-games/by-summoner/{puuid} —
+// состав идущей игры. Отвечает уже на экране загрузки, раньше Live Client.
+//
+// Форма ответа (урезанно):
+//   {"gameId": 123, "participants": [
+//     {"puuid": "...", "riotId": "Имя#TAG", "championId": 103,
+//      "teamId": 100, "spell1Id": 4, "spell2Id": 14, "perks": {...}}, ...]}
+//
+// Контракт:
+//   - сторона считается относительно self_puuid: его teamId — Ally;
+//     self_puuid нет среди участников — nullopt (это не наша игра);
+//   - perks не читаются: малые руны противника игрок в матче не видит,
+//     и Sintence их не показывает (ARCHITECTURE.md §9);
+//   - участник без puuid и без riotId пропускается (бот).
+std::optional<std::vector<LobbyMember>> ParseActiveGame(std::string_view json_text,
+                                                        std::string_view self_puuid);
 
 }  // namespace sintence
 

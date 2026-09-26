@@ -137,4 +137,47 @@ std::optional<std::string> PlatformHost(std::string_view platform_id) {
     return host;
 }
 
+std::optional<std::vector<LobbyMember>> ParseActiveGame(std::string_view json_text,
+                                                        std::string_view self_puuid) {
+    const auto doc = nlohmann::json::parse(json_text, nullptr, false);
+    if (doc.is_discarded() || !doc.is_object() || !doc.contains("participants") ||
+        !doc["participants"].is_array()) {
+        return std::nullopt;
+    }
+
+    const auto& participants = doc["participants"];
+    int self_team = -1;
+    for (const auto& raw : participants) {
+        if (raw.is_object() && GetString(raw, "puuid").value_or("") == self_puuid) {
+            self_team = GetInt(raw, "teamId").value_or(-1);
+        }
+    }
+    if (self_team < 0) {
+        return std::nullopt;
+    }
+
+    std::vector<LobbyMember> members;
+    int cell = 0;
+    for (const auto& raw : participants) {
+        if (!raw.is_object()) {
+            continue;
+        }
+        LobbyMember member;
+        member.puuid = GetString(raw, "puuid").value_or("");
+        member.riot_id = GetString(raw, "riotId").value_or("");
+        if (member.puuid.empty() && member.riot_id.empty()) {
+            continue;
+        }
+        member.cell_id = cell++;
+        member.side = GetInt(raw, "teamId").value_or(-1) == self_team ? LobbySide::Ally
+                                                                      : LobbySide::Enemy;
+        member.champion_id = GetInt(raw, "championId").value_or(0);
+        member.spell1_id = GetInt(raw, "spell1Id").value_or(0);
+        member.spell2_id = GetInt(raw, "spell2Id").value_or(0);
+        member.is_self = member.puuid == self_puuid;
+        members.push_back(std::move(member));
+    }
+    return members;
+}
+
 }  // namespace sintence

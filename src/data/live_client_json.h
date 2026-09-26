@@ -52,6 +52,18 @@ namespace sintence {
 // а не в корне записи игрока. Это единственное место с вложенностью.
 std::optional<std::vector<LivePlayer>> ParseLivePlayers(std::string_view json_text);
 
+// Каноническое имя чемпиона ("Zed", "MonkeyKing") из служебной строки клиента.
+//
+// Форматов у Riot несколько, и все встречаются в одном матче:
+//   "game_character_displayname_Zed"             -> "Zed"
+//   "Character_Aatrox_Name"                      -> "Aatrox"  (так пришёл Атрокс)
+//   "game_character_skin_displayname_Vladimir_5" -> "Vladimir" (rawSkinName)
+// Правило: из частей через '_' берётся та, что не служебное слово и не число.
+// Хвост после последнего подчёркивания, как было раньше, давал для Атрокса
+// "Name" — и у него не было ни иконки, ни советов, ни способностей.
+// Ничего подходящего — пустая строка.
+std::string ChampionKeyFromRaw(std::string_view raw);
+
 // Разбирает ответ GET /liveclientdata/gamestats.
 //
 // Контракт:
