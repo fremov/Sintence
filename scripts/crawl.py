@@ -6,6 +6,7 @@
     python scripts/crawl.py --seed              # посев по дивизионам, один раз
     python scripts/crawl.py --hours 8           # ночной прогон
     python scripts/crawl.py --hours 1 --no-timeline
+    python scripts/crawl.py --until-stopped     # пока не остановят (так запускает пульт)
     python scripts/crawl.py --stats             # что уже собрано
 
 Потолок ключа — 50 запросов в минуту. Матч без timeline стоит один
@@ -497,6 +498,8 @@ def main() -> int:
     parser.add_argument("--seed", action="store_true", help="посев по дивизионам")
     parser.add_argument("--seed-pages", type=int, default=1)
     parser.add_argument("--hours", type=float, default=0.0, help="сколько собирать")
+    parser.add_argument("--until-stopped", action="store_true",
+                        help="собирать без срока, пока не остановят Ctrl+C / Ctrl+Break")
     parser.add_argument("--per-player", type=int, default=20,
                         help="матчей с одного игрока")
     parser.add_argument("--days", type=int, default=14,
@@ -525,14 +528,19 @@ def main() -> int:
         return 1
 
     signal.signal(signal.SIGINT, request_stop)
+    # Ctrl+Break — так останавливает сбор сайт crawler_dashboard: дочернему
+    # процессу в своей группе Windows умеет послать только его, не Ctrl+C.
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, request_stop)
 
     try:
         if args.refetch_timelines:
             refetch_timelines(client, db, args.refetch_timelines, args.hours)
         if args.seed:
             print(f"новых игроков в очереди: {seed(client, db, args.seed_pages)}")
-        if args.hours > 0:
-            crawl(client, db, args.hours, args.per_player, args.days,
+        if args.hours > 0 or args.until_stopped:
+            hours = float("inf") if args.until_stopped else args.hours
+            crawl(client, db, hours, args.per_player, args.days,
                   timeline=not args.no_timeline)
     except RiotError as error:
         print(error, file=sys.stderr)

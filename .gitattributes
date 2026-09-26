@@ -1,0 +1,2 @@
+# cmd.exe с LF-строками путается в метках и goto.
+*.cmd text eol=crlf

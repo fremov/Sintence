@@ -1,0 +1,68 @@
+@import 'tailwindcss';
+
+/* Цвета — те же, что у интерфейса Sintence (sintence-web/src/styles.css). */
+@theme {
+  --color-bg: #0d1117;
+  --color-panel: #12161d;
+  --color-soft: #1a212b;
+  --color-edge: #262d38;
+  --color-text: #e8ecf2;
+  --color-muted: #7d8899;
+  --color-blue: #4b9dff;
+  --color-red: #ff5f56;
+  --color-gold: #c8aa6e;
+  --color-ok: #4ad66d;
+  --color-warn: #f0b44c;
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Cascadia Mono', Consolas, monospace;
+}
+
+body {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Поля ввода и кнопки — одни на всю страницу. */
+@layer components {
+  .field {
+    @apply rounded-md border border-edge bg-soft px-2 py-1.5 text-text outline-none focus:border-gold;
+  }
+  .btn {
+    @apply cursor-pointer rounded-md border border-edge bg-soft px-3.5 py-1.5 text-text hover:border-gold disabled:cursor-default disabled:opacity-50 disabled:hover:border-edge;
+  }
+  .btn-primary {
+    @apply border-gold bg-gradient-to-b from-[#3a3224] to-[#262017] font-semibold text-[#f0d89a];
+  }
+  .btn-danger {
+    @apply hover:border-red hover:text-red;
+  }
+  .card {
+    @apply min-w-0 rounded-lg border border-edge bg-panel p-4;
+  }
+  .card-title {
+    @apply mb-1 text-[15px] font-semibold;
+  }
+  .hint {
+    @apply text-xs leading-snug text-muted;
+  }
+  .tag {
+    @apply ml-1.5 inline-block rounded-full border border-gold px-1.5 text-[11px] text-gold;
+  }
+}
+
+/* Полосы прокрутки — как в Sintence. Стандартный scrollbar-color нельзя:
+   с Chromium 121 он отключает ::-webkit-scrollbar целиком. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2c3440;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gold);
+  background-clip: padding-box;
+}
