@@ -181,6 +181,18 @@ void AttachProfileWebView(HWND hwnd, ICoreWebView2Environment* environment) {
                   .Get());
 }
 
+void PostToProfileWindow(HWND hwnd, const std::wstring& json) {
+    ShowProfileWindow(hwnd);
+    ProfileState* state = hwnd ? StateOf(hwnd) : nullptr;
+    if (state == nullptr || !state->controller) {
+        return;
+    }
+    ComPtr<ICoreWebView2> webview;
+    if (SUCCEEDED(state->controller->get_CoreWebView2(&webview)) && webview) {
+        webview->PostWebMessageAsJson(json.c_str());
+    }
+}
+
 void ShowProfileWindow(HWND hwnd) {
     if (hwnd == nullptr) {
         return;

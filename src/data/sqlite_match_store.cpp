@@ -5,16 +5,22 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "app_log.h"
 #include "history_schema.h"  // kHistorySchema — встроен из project/data при сборке
+#include "match_detail_json.h"  // миграция: переразбор сохранённых ответов Riot
+#include "timeline_json.h"      // смерти до 10-й минуты при сохранении timeline
 
 namespace sintence {
 
 namespace {
 
-constexpr const char* kSchemaVersion = "1";
+// 2 — колонки для плашек стиля игры (damage_buildings, early_takedowns,
+// solo_kills, lane_lead); старая база догоняется в MigrateToV2.
+constexpr const char* kSchemaVersion = "2";
 
 // Riot ID в виде для сравнения без учёта регистра: латиница и кириллица
 // в нижний регистр, «ё» как «е» (в никах пишут и так и так). Остальные
@@ -120,7 +126,103 @@ constexpr const char* kParticipantColumns =
     "puuid, riot_id, team_id, win, champion_id, champion, role, champ_level, kills, deaths, "
     "assists, cs, gold, damage_dealt, damage_taken, vision_score, wards_placed, wards_killed, "
     "item0, item1, item2, item3, item4, item5, item6, spell1, spell2, keystone, "
-    "primary_style, sub_style";
+    "primary_style, sub_style, damage_buildings, early_takedowns, solo_kills, lane_lead";
+
+// Версия 1 -> 2: четыре колонки для плашек стиля игры. CREATE TABLE IF NOT
+// EXISTS существующую таблицу не меняет, поэтому колонки добавляются здесь
+// и заполняются из сохранённого ответа Riot — без единого запроса к нему.
+// ALTER TABLE ... ADD COLUMN ... DEFAULT есть и в MySQL: при переезде
+// на сервер миграция та же.
+bool MigrateToV2(sqlite3* db) {
+    bool has_columns = false;
+    {
+        Statement columns(db, "PRAGMA table_info(participants)");
+        while (columns.Step()) {
+            has_columns = has_columns || columns.Text(1) == "damage_buildings";
+        }
+    }
+    if (has_columns) {
+        return true;
+    }
+    if (!Exec(db,
+              "ALTER TABLE participants ADD COLUMN damage_buildings INTEGER NOT NULL DEFAULT 0;"
+              "ALTER TABLE participants ADD COLUMN early_takedowns INTEGER NOT NULL DEFAULT 0;"
+              "ALTER TABLE participants ADD COLUMN solo_kills INTEGER NOT NULL DEFAULT 0;"
+              "ALTER TABLE participants ADD COLUMN lane_lead INTEGER NOT NULL DEFAULT -1;")) {
+        return false;
+    }
+
+    std::vector<std::string> raws;
+    {
+        Statement rows(db, "SELECT raw_json FROM matches");
+        while (rows.Step()) {
+            raws.push_back(rows.Text(0));
+        }
+    }
+    Exec(db, "BEGIN");
+    int updated = 0;
+    for (const std::string& raw : raws) {
+        const auto match = ParseMatchDetail(raw);
+        if (!match) {
+            continue;
+        }
+        for (const MatchParticipant& p : match->participants) {
+            Statement update(db,
+                             "UPDATE participants SET damage_buildings = ?, early_takedowns = ?, "
+                             "solo_kills = ?, lane_lead = ? WHERE match_id = ? AND puuid = ?");
+            update.Bind(1, p.damage_to_buildings)
+                .Bind(2, p.early_takedowns)
+                .Bind(3, p.solo_kills)
+                .Bind(4, p.lane_lead)
+                .Bind(5, match->match_id)
+                .Bind(6, p.puuid)
+                .Run();
+        }
+        ++updated;
+    }
+    Exec(db, "COMMIT");
+    Log("история: база обновлена до версии 2, матчей переразобрано {}", updated);
+    return true;
+}
+
+// Смерти до 10-й минуты из разобранного timeline — в timeline_deaths.
+// Разбор мегабайта JSON — в потоке загрузки, а не в обработчике HTTP.
+void SaveEarlyDeaths(sqlite3* db, const std::string& match_id, const MatchTimeline& timeline) {
+    for (const TimelineParticipant& p : timeline.participants) {
+        const auto early = std::ranges::count_if(p.death_seconds, [](int second) { return second < 600; });
+        Statement insert(db,
+                         "INSERT OR REPLACE INTO timeline_deaths (match_id, puuid, deaths_before_10) "
+                         "VALUES (?, ?, ?)");
+        insert.Bind(1, match_id).Bind(2, p.puuid).Bind(3, static_cast<int>(early)).Run();
+    }
+}
+
+// Timeline, скачанные до появления timeline_deaths: досчитать один раз.
+void BackfillEarlyDeaths(sqlite3* db) {
+    std::vector<std::string> missing;
+    {
+        Statement rows(db,
+                       "SELECT match_id FROM timelines WHERE match_id NOT IN "
+                       "(SELECT DISTINCT match_id FROM timeline_deaths)");
+        while (rows.Step()) {
+            missing.push_back(rows.Text(0));
+        }
+    }
+    if (missing.empty()) {
+        return;
+    }
+    Exec(db, "BEGIN");
+    for (const std::string& match_id : missing) {
+        Statement raw(db, "SELECT raw_json FROM timelines WHERE match_id = ?");
+        if (raw.Bind(1, match_id).Step()) {
+            if (const auto timeline = ParseMatchTimeline(raw.Text(0))) {
+                SaveEarlyDeaths(db, match_id, *timeline);
+            }
+        }
+    }
+    Exec(db, "COMMIT");
+    Log("история: смерти до 10-й минуты посчитаны по {} timeline", missing.size());
+}
 
 }  // namespace
 
@@ -150,9 +252,10 @@ std::unique_ptr<SqliteMatchStore> SqliteMatchStore::Open(const std::string& path
     // WAL — чтобы чтение из HTTP не ждало записи загрузчика. Настройка
     // SQLite; у серверной базы будут свои.
     Exec(impl->db, "PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
-    if (!Exec(impl->db, kHistorySchema)) {
+    if (!Exec(impl->db, kHistorySchema) || !MigrateToV2(impl->db)) {
         return nullptr;
     }
+    BackfillEarlyDeaths(impl->db);
     {
         Statement version(impl->db,
                           "INSERT OR REPLACE INTO meta (meta_key, meta_value) VALUES ('schema_version', ?)");
@@ -205,8 +308,10 @@ bool SqliteMatchStore::SaveMatch(const MatchDetail& match, std::string_view raw_
                          "champion_id, champion, role, champ_level, kills, deaths, assists, cs, "
                          "gold, damage_dealt, damage_taken, vision_score, wards_placed, "
                          "wards_killed, item0, item1, item2, item3, item4, item5, item6, spell1, "
-                         "spell2, keystone, primary_style, sub_style) VALUES (?, ?, ?, ?, ?, ?, ?, "
-                         "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                         "spell2, keystone, primary_style, sub_style, damage_buildings, "
+                         "early_takedowns, solo_kills, lane_lead) VALUES (?, ?, ?, ?, ?, ?, ?, "
+                         "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                         "?, ?, ?, ?)");
         insert.Bind(1, match.match_id)
             .Bind(2, p.puuid)
             .Bind(3, p.riot_id)
@@ -234,6 +339,10 @@ bool SqliteMatchStore::SaveMatch(const MatchDetail& match, std::string_view raw_
                  .Bind(29, p.keystone)
                  .Bind(30, p.primary_style)
                  .Bind(31, p.sub_style)
+                 .Bind(32, p.damage_to_buildings)
+                 .Bind(33, p.early_takedowns)
+                 .Bind(34, p.solo_kills)
+                 .Bind(35, p.lane_lead)
                  .Run();
     }
 
@@ -290,6 +399,10 @@ std::optional<MatchDetail> SqliteMatchStore::LoadMatchLocked(const std::string& 
         p.keystone = rows.Int(27);
         p.primary_style = rows.Int(28);
         p.sub_style = rows.Int(29);
+        p.damage_to_buildings = rows.Int(30);
+        p.early_takedowns = rows.Int(31);
+        p.solo_kills = rows.Int(32);
+        p.lane_lead = rows.Int(33);
         match.participants.push_back(std::move(p));
     }
     return match;
@@ -393,6 +506,23 @@ int SqliteMatchStore::CountMatches(const std::string& puuid) const {
     return query.Bind(1, puuid).Step() ? query.Int(0) : 0;
 }
 
+std::unordered_map<std::string, int> SqliteMatchStore::EarlyDeaths(const std::string& puuid) const {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    std::unordered_map<std::string, int> result;
+    Statement rows(impl_->db, "SELECT match_id, deaths_before_10 FROM timeline_deaths WHERE puuid = ?");
+    rows.Bind(1, puuid);
+    while (rows.Step()) {
+        result[rows.Text(0)] = rows.Int(1);
+    }
+    return result;
+}
+
+bool SqliteMatchStore::HasTimeline(const std::string& match_id) const {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    Statement query(impl_->db, "SELECT 1 FROM timelines WHERE match_id = ?");
+    return query.Bind(1, match_id).Step();
+}
+
 std::optional<std::string> SqliteMatchStore::LoadTimeline(const std::string& match_id) const {
     const std::lock_guard<std::mutex> lock(mutex_);
     Statement query(impl_->db, "SELECT raw_json FROM timelines WHERE match_id = ?");
@@ -403,11 +533,22 @@ std::optional<std::string> SqliteMatchStore::LoadTimeline(const std::string& mat
 }
 
 bool SqliteMatchStore::SaveTimeline(const std::string& match_id, std::string_view raw_json) {
+    // Разбор — до блокировки: читатели не ждут, пока разбирается мегабайт.
+    const auto timeline = ParseMatchTimeline(raw_json);
     const std::lock_guard<std::mutex> lock(mutex_);
-    Statement insert(impl_->db,
-                     "INSERT OR REPLACE INTO timelines (match_id, fetched_at, raw_json) "
-                     "VALUES (?, ?, ?)");
-    return insert.Bind(1, match_id).Bind(2, NowMs()).Bind(3, raw_json).Run();
+    Exec(impl_->db, "BEGIN");
+    bool ok = false;
+    {
+        Statement insert(impl_->db,
+                         "INSERT OR REPLACE INTO timelines (match_id, fetched_at, raw_json) "
+                         "VALUES (?, ?, ?)");
+        ok = insert.Bind(1, match_id).Bind(2, NowMs()).Bind(3, raw_json).Run();
+    }
+    if (ok && timeline) {
+        SaveEarlyDeaths(impl_->db, match_id, *timeline);
+    }
+    Exec(impl_->db, ok ? "COMMIT" : "ROLLBACK");
+    return ok;
 }
 
 std::optional<std::string> SqliteMatchStore::LoadRawMatch(const std::string& match_id) const {

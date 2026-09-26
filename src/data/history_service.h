@@ -11,6 +11,7 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "match_history.h"
 #include "match_store.h"
@@ -47,7 +48,11 @@ public:
     // Заказать depth последних игр игрока. Возвращает сразу. Повторный
     // заказ того же или меньшего размера чаще раза в минуту ничего не делает:
     // интерфейс зовёт это при каждом опросе.
-    void Request(const std::string& riot_id, int depth);
+    //
+    // with_account = false — без иконки, уровня и рангов (два запроса):
+    // для игроков лобби, чьи ранги уже знает ProfileService, нужны только
+    // матчи — для плашек стиля игры.
+    void Request(const std::string& riot_id, int depth, bool with_account = true);
 
     // Заказать timeline матча (подробности). Уже в хранилище или уже
     // провалился — ничего; retry = true снимает отметку о провале.
@@ -56,6 +61,11 @@ public:
     // Timeline не скачался за kMaxAttempts попыток — панели показать ошибку.
     bool TimelineFailed(const std::string& match_id) const;
 
+    // Подкачать timeline в фоне — для плашки «рано умирает» (время смертей
+    // есть только в нём). Самый низкий приоритет: после всех матчей, без
+    // повторов при сбое. Уже скачанные и уже заказанные пропускаются.
+    void PrefetchTimelines(const std::vector<std::string>& match_ids);
+
     // Состояние загрузки игрока; nullopt — его ещё не заказывали.
     std::optional<HistoryStatus> Status(const std::string& riot_id) const;
 
@@ -63,12 +73,14 @@ private:
     struct PlayerJob {
         std::string riot_id;
         int depth = 0;
+        bool with_account = true;
     };
 
     void Worker();
     void RunPlayerJob(const PlayerJob& job);
     void RunMatchJob(const std::string& match_id);
     void RunTimelineJob(const std::string& match_id);
+    void RunPrefetchJob(const std::string& match_id);
     bool OverlayBusy() const;
 
     // Сбой сети или 429 после повтора: вернуть работу в конец очереди,
@@ -84,6 +96,8 @@ private:
     std::deque<std::string> timeline_queue_;
     std::deque<PlayerJob> player_queue_;
     std::deque<std::string> match_queue_;
+    std::deque<std::string> prefetch_queue_;
+    std::unordered_set<std::string> prefetched_;  // уже заказывали — второй раз не надо
     std::unordered_map<std::string, HistoryStatus> status_;  // riot_id -> состояние
     std::unordered_map<std::string, std::chrono::steady_clock::time_point> refreshed_;
     std::unordered_map<std::string, int> attempts_;  // id матча или timeline -> неудач

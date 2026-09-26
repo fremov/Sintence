@@ -65,6 +65,14 @@ std::optional<MatchTimeline> ParseMatchTimeline(std::string_view json_text) {
                 continue;
             }
             const std::string type = GetString(event, "type").value_or("");
+            // Смерть: у CHAMPION_KILL участник — victimId, а не participantId.
+            if (type == "CHAMPION_KILL") {
+                if (TimelineParticipant* victim = at(GetInt(event, "victimId").value_or(0))) {
+                    victim->death_seconds.push_back(
+                        static_cast<int>(GetInt64(event, "timestamp").value_or(0) / 1000));
+                }
+                continue;
+            }
             TimelineParticipant* who = at(GetInt(event, "participantId").value_or(0));
             if (who == nullptr) {
                 continue;

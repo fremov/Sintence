@@ -38,6 +38,8 @@ public:
     std::vector<PlayerSuggestion> SearchPlayers(std::string_view query,
                                                 int limit) const override;
     int CountMatches(const std::string& puuid) const override;
+    bool HasTimeline(const std::string& match_id) const override;
+    std::unordered_map<std::string, int> EarlyDeaths(const std::string& puuid) const override;
     std::optional<std::string> LoadTimeline(const std::string& match_id) const override;
     bool SaveTimeline(const std::string& match_id, std::string_view raw_json) override;
 

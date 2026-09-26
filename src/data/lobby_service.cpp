@@ -120,6 +120,8 @@ void LobbyService::TickChampSelect(Lobby& next) {
     next = std::move(*session);
 
     // Своё имя клиент в сессии иногда не присылает — берём из аккаунта.
+    // puuid из клиента Riot API не передаётся: это UUID, а не puuid ключа
+    // (ProfileService::RequestActiveGame), — профили ищутся по Riot ID.
     std::vector<std::string> riot_ids;
     for (LobbyMember& member : next.members) {
         if (member.is_self && self_) {
@@ -128,9 +130,6 @@ void LobbyService::TickChampSelect(Lobby& next) {
         }
         if (member.side != LobbySide::Ally || member.riot_id.empty()) {
             continue;
-        }
-        if (profiles_ != nullptr) {
-            profiles_->HintPuuid(member.riot_id, member.puuid);
         }
         riot_ids.push_back(member.riot_id);
     }
@@ -153,7 +152,6 @@ void LobbyService::TickInGame(Lobby& next) {
             std::vector<std::string> riot_ids;
             for (const LobbyMember& member : *members) {
                 if (profiles_ != nullptr && !member.riot_id.empty()) {
-                    profiles_->HintPuuid(member.riot_id, member.puuid);
                     riot_ids.push_back(member.riot_id);
                 }
             }
@@ -191,7 +189,7 @@ void LobbyService::TickInGame(Lobby& next) {
         (spectate_attempts_ == 0 || now - last_spectate_ >= kSpectateRetry)) {
         ++spectate_attempts_;
         last_spectate_ = now;
-        profiles_->RequestActiveGame(self_->puuid);
+        profiles_->RequestActiveGame(self_->riot_id);
     }
     if (next.members.empty()) {
         next.note = game.attempted

@@ -1,6 +1,7 @@
 #include "history_service.h"
 
 #include <algorithm>
+#include <format>
 #include <utility>
 #include <vector>
 
@@ -46,7 +47,7 @@ HistoryService::~HistoryService() {
     }
 }
 
-void HistoryService::Request(const std::string& riot_id, int depth) {
+void HistoryService::Request(const std::string& riot_id, int depth, bool with_account) {
     if (riot_id.empty() || depth <= 0) {
         return;
     }
@@ -63,13 +64,13 @@ void HistoryService::Request(const std::string& riot_id, int depth) {
         refreshed_[riot_id] = now;
         status.depth = std::max(status.depth, depth);
         status.running = true;
-        player_queue_.push_back({riot_id, status.depth});
+        player_queue_.push_back({riot_id, status.depth, with_account});
     }
     wake_.notify_one();
 }
 
 void HistoryService::RequestTimeline(const std::string& match_id, bool retry) {
-    if (match_id.empty() || store_.LoadTimeline(match_id)) {
+    if (match_id.empty() || store_.HasTimeline(match_id)) {
         return;
     }
     {
@@ -105,6 +106,22 @@ bool HistoryService::Retry(std::deque<std::string>& queue, const std::string& id
     return true;
 }
 
+void HistoryService::PrefetchTimelines(const std::vector<std::string>& match_ids) {
+    bool added = false;
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        for (const std::string& id : match_ids) {
+            if (prefetched_.insert(id).second) {
+                prefetch_queue_.push_back(id);
+                added = true;
+            }
+        }
+    }
+    if (added) {
+        wake_.notify_one();
+    }
+}
+
 std::optional<HistoryStatus> HistoryService::Status(const std::string& riot_id) const {
     const std::lock_guard<std::mutex> lock(mutex_);
     const auto found = status_.find(riot_id);
@@ -127,11 +144,12 @@ void HistoryService::Worker() {
         std::string timeline;
         std::optional<PlayerJob> player;
         std::string match;
+        std::string prefetch;
         {
             std::unique_lock<std::mutex> lock(mutex_);
             wake_.wait(lock, [this] {
                 return stop_ || !timeline_queue_.empty() || !player_queue_.empty() ||
-                       !match_queue_.empty();
+                       !match_queue_.empty() || !prefetch_queue_.empty();
             });
             if (stop_) {
                 return;
@@ -163,12 +181,17 @@ void HistoryService::Worker() {
             } else if (!match_queue_.empty()) {
                 match = std::move(match_queue_.front());
                 match_queue_.pop_front();
+            } else if (!prefetch_queue_.empty()) {
+                prefetch = std::move(prefetch_queue_.front());
+                prefetch_queue_.pop_front();
             }
         }
         if (player) {
             RunPlayerJob(*player);
         } else if (!match.empty()) {
             RunMatchJob(match);
+        } else if (!prefetch.empty()) {
+            RunPrefetchJob(prefetch);
         }
 
         // Очередь матчей опустела — загрузка всех игроков закончена.
@@ -193,13 +216,30 @@ void HistoryService::RunPlayerJob(const PlayerJob& job) {
         return;
     }
 
-    const auto summoner = client_->LoadSummoner(*puuid);
-    const auto ranked = client_->LoadRankedEntries(*puuid);
+    // Иконка, уровень и ранги — только для окна профиля; у игроков лобби
+    // их уже знает ProfileService, и два запроса на игрока — лишние.
+    std::optional<SummonerInfo> summoner;
+    std::optional<std::vector<RankedStats>> ranked;
+    if (job.with_account) {
+        summoner = client_->LoadSummoner(*puuid);
+        ranked = client_->LoadRankedEntries(*puuid);
+    }
 
     std::vector<std::string> ids;
     for (int start = 0; start < job.depth; start += kIdsPerRequest) {
         const int count = std::min(kIdsPerRequest, job.depth - start);
         const auto page = client_->LoadMatchIds(*puuid, start, count);
+        if (!page && start == 0) {
+            // Список игр не пришёл вовсе — это ошибка, а не «игр нет»:
+            // прежние puuid, ранги и счётчики не затираем нулями.
+            const int code = client_->LastStatus();
+            LogError("история: {} — список игр не получен ({})", job.riot_id, code);
+            const std::lock_guard<std::mutex> lock(mutex_);
+            auto& status = status_[job.riot_id];
+            status.error = std::format("Riot не отдал список игр (код {})", code);
+            status.running = false;
+            return;
+        }
         if (!page) {
             break;
         }
@@ -259,8 +299,19 @@ void HistoryService::RunMatchJob(const std::string& match_id) {
     store_.SaveMatch(*match, *raw);
 }
 
+void HistoryService::RunPrefetchJob(const std::string& match_id) {
+    if (store_.HasTimeline(match_id)) {
+        return;
+    }
+    // Без повторов и без отметки о провале: фоновая подкачка — не просьба
+    // пользователя. Откроет подробности — там timeline закажется заново.
+    if (const auto raw = client_->LoadTimelineJson(match_id)) {
+        store_.SaveTimeline(match_id, *raw);
+    }
+}
+
 void HistoryService::RunTimelineJob(const std::string& match_id) {
-    if (store_.LoadTimeline(match_id)) {
+    if (store_.HasTimeline(match_id)) {
         return;
     }
     if (const auto raw = client_->LoadTimelineJson(match_id)) {

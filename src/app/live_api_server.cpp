@@ -4,6 +4,8 @@
 #include <atomic>
 #include <charconv>
 #include <format>
+#include <functional>
+#include <mutex>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -13,6 +15,7 @@
 #include "app_log.h"
 #include "json.hpp"
 #include "lcu_actions.h"
+#include "playstyle.h"
 #include "profile_summary.h"
 #include "timeline_json.h"
 
@@ -477,8 +480,64 @@ std::string LiveGameToJson(const LiveGame& game) {
     return doc.dump();
 }
 
+// Сколько последних игр смотреть у игроков лобби ради плашек стиля.
+// Десять игроков по десять матчей — около 110 запросов, две минуты ключа:
+// плашки появляются по ходу загрузки матча, после рангов.
+constexpr int kLobbyStyleDepth = 10;
+
+// Для скольких свежих игр профиля подкачивать timeline в фоне: время
+// смертей (плашка «рано умирает») есть только в нём.
+constexpr int kStyleTimelines = 20;
+
+const char* StyleTagId(StyleTag tag) {
+    switch (tag) {
+        case StyleTag::kFarmer: return "farmer";
+        case StyleTag::kLowFarm: return "lowFarm";
+        case StyleTag::kPusher: return "pusher";
+        case StyleTag::kEarlyAggression: return "earlyAggression";
+        case StyleTag::kLaneWinner: return "laneWinner";
+        case StyleTag::kEarlyDeaths: return "earlyDeaths";
+        case StyleTag::kDiesOften: return "diesOften";
+        case StyleTag::kRarelyDies: return "rarelyDies";
+        case StyleTag::kTeamPlayer: return "teamPlayer";
+        case StyleTag::kSoloPlayer: return "soloPlayer";
+        case StyleTag::kVisionControl: return "visionControl";
+        case StyleTag::kLowVision: return "lowVision";
+        case StyleTag::kWinStreak: return "winStreak";
+        case StyleTag::kLossStreak: return "lossStreak";
+        case StyleTag::kOneTrick: return "oneTrick";
+    }
+    return "unknown";
+}
+
+// Плашки — id и числа; подписи и пояснения пишет интерфейс.
+nlohmann::json StyleToJson(const PlayStyle& style) {
+    auto tags = nlohmann::json::array();
+    for (const StyleFinding& finding : style.tags) {
+        tags.push_back({
+            {"id", StyleTagId(finding.tag)},
+            {"value", finding.value},
+            {"typical", finding.typical},
+            {"games", finding.games},
+            {"championId", finding.champion_id},
+        });
+    }
+    auto champions = nlohmann::json::array();
+    for (const auto& [champion_id, games] : style.champion_games) {
+        champions.push_back({{"championId", champion_id}, {"games", games}});
+    }
+    return {
+        {"games", style.games},
+        {"roleGames", style.role_games},
+        {"tags", std::move(tags)},
+        {"champions", std::move(champions)},
+    };
+}
+
+// style_of — плашки игрока по Riot ID или null, пока история не загружена.
 std::string ProfilesToJson(const std::vector<PlayerProfile>& profiles,
-                           const ProfileService::Progress& progress) {
+                           const ProfileService::Progress& progress,
+                           const std::function<nlohmann::json(const std::string&)>& style_of) {
     nlohmann::json doc;
     doc["progress"] = {
         {"done", progress.done},
@@ -515,6 +574,7 @@ std::string ProfilesToJson(const std::vector<PlayerProfile>& profiles,
             });
         }
         item["masteries"] = std::move(masteries);
+        item["style"] = style_of ? style_of(profile.riot_id) : nlohmann::json(nullptr);
         items.push_back(std::move(item));
     }
     doc["profiles"] = std::move(items);
@@ -546,6 +606,22 @@ struct LiveApiServer::Impl {
           lobby(lobby_in),
           store(store_in),
           history(history_in) {}
+
+    // Плашки стиля игрока по его последним depth играм или null, пока
+    // история не загружена. Только то, что уже в хранилище: сам ничего
+    // не заказывает.
+    nlohmann::json StyleOf(const std::string& riot_id, int depth) {
+        if (store == nullptr || history == nullptr) {
+            return nullptr;
+        }
+        const auto status = history->Status(riot_id);
+        if (!status || status->puuid.empty() || status->stored == 0) {
+            return nullptr;
+        }
+        const auto matches = store->RecentMatches(status->puuid, 0, depth);
+        return StyleToJson(
+            AnalyzePlayStyle(matches, status->puuid, store->EarlyDeaths(status->puuid)));
+    }
 
     // Чью историю показывать: riotId из запроса или свой из клиента League.
     std::string RiotIdOf(const httplib::Request& request) const {
@@ -653,8 +729,20 @@ bool LiveApiServer::Start() {
             }
         }
 
+        // Плашки стиля: для каждого игрока с готовым профилем — его
+        // последние игры. Заказ лёгкий (без рангов — они уже есть) и
+        // уступает профилям в очереди HistoryService.
+        const std::vector<PlayerProfile> ready = impl_->profiles->Ready();
+        if (impl_->history != nullptr) {
+            for (const PlayerProfile& profile : ready) {
+                impl_->history->Request(profile.riot_id, kLobbyStyleDepth, false);
+            }
+        }
         response.set_content(
-            ProfilesToJson(impl_->profiles->Ready(), impl_->profiles->Status()),
+            ProfilesToJson(ready, impl_->profiles->Status(),
+                           [this](const std::string& riot_id) {
+                               return impl_->StyleOf(riot_id, kLobbyStyleDepth);
+                           }),
             "application/json");
     });
 
@@ -817,6 +905,18 @@ bool LiveApiServer::Start() {
                 status->puuid);
         }
         doc["summary"] = SummaryToJson(summary);
+        doc["style"] = impl_->StyleOf(riot_id, status ? status->depth : depth);
+
+        // Плашке «рано умирает» нужно время смертей — оно только в timeline.
+        // Когда матчи скачаны, в фоне подкачиваются timeline свежих игр.
+        if (status && !status->running && !status->puuid.empty()) {
+            std::vector<std::string> ids;
+            for (const MatchDetail& match :
+                 impl_->store->RecentMatches(status->puuid, 0, kStyleTimelines)) {
+                ids.push_back(match.match_id);
+            }
+            impl_->history->PrefetchTimelines(ids);
+        }
         response.set_content(doc.dump(), "application/json");
     });
 

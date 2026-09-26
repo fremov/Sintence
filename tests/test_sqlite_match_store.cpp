@@ -162,3 +162,27 @@ TEST_CASE("SqliteMatchStore: подсказки игроков без учёта
     CHECK(store->SearchPlayers("", 10).empty());
     CHECK(store->SearchPlayers("нет такого", 10).empty());
 }
+
+TEST_CASE("SqliteMatchStore: смерти до 10-й минуты считаются при сохранении timeline") {
+    auto store = SqliteMatchStore::Open(":memory:");
+    REQUIRE(store != nullptr);
+    // Игрок 1 умер на 3-й и на 12-й минуте, игрок 2 — не умирал.
+    const std::string timeline = R"({
+      "metadata": {"participants": ["me", "them"]},
+      "info": {"frames": [
+        {"timestamp": 0, "events": [
+          {"type": "CHAMPION_KILL", "killerId": 2, "victimId": 1, "timestamp": 180000}]},
+        {"timestamp": 720000, "events": [
+          {"type": "CHAMPION_KILL", "killerId": 2, "victimId": 1, "timestamp": 720000}]}
+      ]}
+    })";
+    CHECK_FALSE(store->HasTimeline("RU_1"));
+    REQUIRE(store->SaveTimeline("RU_1", timeline));
+    CHECK(store->HasTimeline("RU_1"));
+
+    const auto mine = store->EarlyDeaths("me");
+    REQUIRE(mine.size() == 1);
+    CHECK(mine.at("RU_1") == 1);
+    CHECK(store->EarlyDeaths("them").at("RU_1") == 0);
+    CHECK(store->EarlyDeaths("nobody").empty());
+}

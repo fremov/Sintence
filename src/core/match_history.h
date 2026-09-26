@@ -42,6 +42,7 @@ struct TimelineParticipant {
     std::string puuid;
     std::string skills;                       // "QWEQQRQ..." — порядок прокачки
     std::vector<TimelinePurchase> purchases;  // по порядку, без отменённых
+    std::vector<int> death_seconds;           // когда умирал, секунды от начала
 };
 
 struct MatchTimeline {

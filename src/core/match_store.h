@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "match_detail.h"
@@ -58,6 +59,13 @@ public:
 
     // Сколько матчей игрока уже в хранилище.
     virtual int CountMatches(const std::string& puuid) const = 0;
+
+    // Смерти игрока до 10-й минуты по матчам, где timeline уже скачан:
+    // match_id -> число. Считаются при сохранении timeline.
+    virtual std::unordered_map<std::string, int> EarlyDeaths(const std::string& puuid) const = 0;
+
+    // Есть ли timeline, не читая его: сам он весит около мегабайта.
+    virtual bool HasTimeline(const std::string& match_id) const = 0;
 
     // Timeline матча — сырой ответ Riot; нет — nullopt.
     virtual std::optional<std::string> LoadTimeline(const std::string& match_id) const = 0;

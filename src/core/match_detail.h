@@ -45,6 +45,15 @@ struct MatchParticipant {
     int keystone = 0;
     int primary_style = 0;
     int sub_style = 0;
+
+    // Для плашек стиля игры (analysis/playstyle). Из challenges match-v5 —
+    // Riot считает их сам, отдельных запросов не нужно.
+    int damage_to_buildings = 0;  // урон по башням и ингибиторам
+    int early_takedowns = 0;      // убийства + помощь в первые 10 минут
+    int solo_kills = 0;           // убийства один на один
+    // Вышел ли из лайнинга (14 мин) заметно впереди соперника по золоту
+    // и опыту: 1 — да, 0 — нет, -1 — Riot не посчитал (ARAM, ремейк).
+    int lane_lead = -1;
 };
 
 struct MatchDetail {

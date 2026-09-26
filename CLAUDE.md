@@ -97,7 +97,10 @@ spectator-v5), `/api/profiles` (501 без ключа, без матча отд�
 `roleSource: "pack"`), окно профиля — `/api/profile`, `/api/matches`,
 `/api/matches/{id}[/timeline]` (история из `HistoryService`, 501 без ключа;
 `?champion=` — игры на одном чемпионе), `/api/players?q=` (подсказки ника из
-сохранённых матчей: поиска по части ника у Riot нет).
+сохранённых матчей: поиска по части ника у Riot нет). Плашки стиля игры
+(`analysis/playstyle`, ARCHITECTURE.md §14) — поле `style` в `/api/profile`
+и у каждого игрока в `/api/profiles`; подписи к ним — в интерфейсе
+(`sintence-web/src/data/playstyle.ts`).
 
 LCU (клиент League): чтение — `LobbyService`; запись — только `data/lcu_actions`
 (страница рун и свои заклинания) и **только по клику** в интерфейсе, никогда
@@ -203,6 +206,14 @@ python scripts/build_pack.py            # SQLite -> project/data/packs/<реги
 python scripts/crawl.py --prune 16.19   # оставить только текущий патч
 python scripts/crawl.py --refetch-timelines 16.19   # докачать покупки у старых матчей
 ```
+
+То же из браузера: `start-crawler.cmd` в корне (двойной щелчок) — пульт
+http://127.0.0.1:8790: запуск и остановка сбора, сборка пака, покрытие патча
+и чего не хватает (`crawler_dashboard/README.md`). Сервер — stdlib Python,
+интерфейс — `crawler_dashboard/web` (Vue + Vite + Tailwind). С пульта сбор
+идёт без срока (`crawl.py --until-stopped`) и останавливается кнопкой
+(Ctrl+Break, `crawl.py` обрабатывает его как Ctrl+C), закрытием всех вкладок
+пульта или вместе с сервером (Job Object).
 
 Покупок на игрока хранится до 40 (`MAX_PURCHASES`); матчи со старым потолком
 в 12 помечены `has_timeline = 1`. `build_pack.py` без `--patch` берёт самый новый

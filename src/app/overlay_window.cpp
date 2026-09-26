@@ -265,6 +265,8 @@ void ApplyVisibility(HWND hwnd, OverlayState& state, bool visible);
 //    "maxScreenShare":0.9, "anchor":"center"|"top", "offsetY":0,
 //    "background":"#12161d", "toggleKey":34}
 //   {"type":"overlay/hide"}
+//   {"type":"profile/open", "riotId":"Имя#TAG"} — щелчок по чемпиону игрока:
+//     панель прячется, окно статистики открывает его профиль.
 void HandleWebMessage(HWND hwnd, OverlayState& state, const std::string& json_text) {
     const nlohmann::json message = nlohmann::json::parse(json_text, nullptr, false);
     if (message.is_discarded() || !message.is_object() || !message.contains("type") ||
@@ -279,6 +281,27 @@ void HandleWebMessage(HWND hwnd, OverlayState& state, const std::string& json_te
             state.visible = false;
             ApplyVisibility(hwnd, state, false);
         }
+        return;
+    }
+    if (type == "profile/open") {
+        // Riot ID из страницы — только как строка «Имя#TAG» разумной длины:
+        // дальше он уходит странице окна статистики, и мусор ей не нужен.
+        const std::string riot_id =
+            message.contains("riotId") && message["riotId"].is_string()
+                ? message["riotId"].get<std::string>()
+                : std::string();
+        if (riot_id.size() < 3 || riot_id.size() > 80 || riot_id.find('#') == std::string::npos ||
+            g_profile_window == nullptr) {
+            Log("профиль из оверлея: не открыть ({})", riot_id.empty() ? "нет Riot ID" : riot_id);
+            return;
+        }
+        Log("профиль из оверлея: {}", riot_id);
+        if (state.visible) {
+            state.visible = false;
+            ApplyVisibility(hwnd, state, false);
+        }
+        const std::string json = nlohmann::json{{"type", "profile/open"}, {"riotId", riot_id}}.dump();
+        PostToProfileWindow(g_profile_window, Widen(json));
         return;
     }
     if (type != "overlay/config") {

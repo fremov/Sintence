@@ -32,6 +32,9 @@ constexpr const char* kMatch = R"({
         "item0": 3152, "item1": 3020, "item2": 4645, "item3": 0, "item4": 1058, "item5": 0,
         "item6": 3340,
         "summoner1Id": 4, "summoner2Id": 12,
+        "damageDealtToBuildings": 5400,
+        "challenges": {"takedownsFirstXMinutes": 6, "soloKills": 3,
+                       "laningPhaseGoldExpAdvantage": 1},
         "perks": {"styles": [
           {"style": 8200, "selections": [{"perk": 8214}, {"perk": 8226}]},
           {"style": 8000, "selections": [{"perk": 9111}]}
@@ -108,4 +111,20 @@ TEST_CASE("ParseMatchDetail: мусор и неполный ответ — nullo
     CHECK_FALSE(ParseMatchDetail("[]").has_value());
     CHECK_FALSE(ParseMatchDetail(R"({"metadata": {}, "info": {"participants": []}})").has_value());
     CHECK_FALSE(ParseMatchDetail(R"({"metadata": {"matchId": "RU_1"}, "info": {}})").has_value());
+}
+
+TEST_CASE("ParseMatchDetail: поля для плашек стиля игры") {
+    const auto match = ParseMatchDetail(kMatch);
+    REQUIRE(match.has_value());
+    const auto* self = match->Find("p-self");
+    REQUIRE(self != nullptr);
+    CHECK(self->damage_to_buildings == 5400);
+    CHECK(self->early_takedowns == 6);
+    CHECK(self->solo_kills == 3);
+    CHECK(self->lane_lead == 1);
+    // Нет challenges (старые матчи, режимы без них) — нули и «нет данных».
+    const auto* enemy = match->Find("p-enemy");
+    REQUIRE(enemy != nullptr);
+    CHECK(enemy->early_takedowns == 0);
+    CHECK(enemy->lane_lead == -1);
 }

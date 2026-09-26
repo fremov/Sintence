@@ -106,6 +106,13 @@ std::optional<MatchDetail> ParseMatchDetail(std::string_view json_text) {
         p.spell1 = Int(raw, "summoner1Id");
         p.spell2 = Int(raw, "summoner2Id");
         ParsePerks(raw, p);
+        p.damage_to_buildings = Int(raw, "damageDealtToBuildings");
+        if (raw.contains("challenges") && raw["challenges"].is_object()) {
+            const auto& challenges = raw["challenges"];
+            p.early_takedowns = Int(challenges, "takedownsFirstXMinutes");
+            p.solo_kills = Int(challenges, "soloKills");
+            p.lane_lead = GetInt(challenges, "laningPhaseGoldExpAdvantage").value_or(-1);
+        }
         match.participants.push_back(std::move(p));
     }
     return match;

@@ -67,11 +67,27 @@ CREATE TABLE IF NOT EXISTS participants (
     keystone      INTEGER     NOT NULL,
     primary_style INTEGER     NOT NULL,
     sub_style     INTEGER     NOT NULL,
+    -- Для плашек стиля игры (schema_version 2). В старых базах добавляются
+    -- ALTER TABLE и заполняются из raw_json.
+    damage_buildings INTEGER NOT NULL DEFAULT 0,  -- урон по постройкам
+    early_takedowns  INTEGER NOT NULL DEFAULT 0,  -- убийства + помощь до 10 минуты
+    solo_kills       INTEGER NOT NULL DEFAULT 0,
+    lane_lead        INTEGER NOT NULL DEFAULT -1, -- 1/0: впереди после лайнинга; -1 — нет данных
     PRIMARY KEY (match_id, puuid)
 );
 
 -- «Последние игры игрока» — главный запрос окна профиля.
 CREATE INDEX IF NOT EXISTS participants_by_puuid ON participants (puuid, match_id);
+
+-- Смерти до 10-й минуты по timeline — для плашки «рано умирает». Считаются
+-- один раз при сохранении timeline: сам он весит около мегабайта, и
+-- разбирать его на каждый запрос профиля слишком дорого.
+CREATE TABLE IF NOT EXISTS timeline_deaths (
+    match_id         VARCHAR(32) NOT NULL,
+    puuid            VARCHAR(80) NOT NULL,
+    deaths_before_10 INTEGER     NOT NULL,
+    PRIMARY KEY (match_id, puuid)
+);
 
 -- Timeline матча: порядок покупок, прокачки и золото по минутам. Второй
 -- запрос к Riot на матч — качается только когда открыли подробности.

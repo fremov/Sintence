@@ -50,6 +50,12 @@ void AttachProfileWebView(HWND hwnd, ICoreWebView2Environment* environment);
 // Вернуть окно из трея: показать, развернуть, вывести на передний план.
 void ShowProfileWindow(HWND hwnd);
 
+// Показать окно и отправить странице сообщение (JSON). Так оверлей
+// открывает профиль игрока: {"type":"profile/open","riotId":"Имя#TAG"}.
+// Страница ещё не загрузилась — сообщение теряется, окно всё равно
+// показывается.
+void PostToProfileWindow(HWND hwnd, const std::wstring& json);
+
 }  // namespace sintence
 
 #endif  // SINTENCE_APP_PROFILE_WINDOW_H

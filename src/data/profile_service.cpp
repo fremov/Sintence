@@ -42,24 +42,16 @@ void ProfileService::Request(const std::vector<std::string>& riot_ids) {
     }
 }
 
-void ProfileService::HintPuuid(const std::string& riot_id, const std::string& puuid) {
-    if (riot_id.empty() || puuid.empty()) {
-        return;
-    }
-    const std::lock_guard<std::mutex> lock(mutex_);
-    hints_.emplace_back(riot_id, puuid);
-}
-
-void ProfileService::RequestActiveGame(const std::string& self_puuid) {
-    if (self_puuid.empty()) {
+void ProfileService::RequestActiveGame(const std::string& self_riot_id) {
+    if (self_riot_id.empty()) {
         return;
     }
     {
         const std::lock_guard<std::mutex> lock(mutex_);
-        if (active_game_request_ == self_puuid) {
+        if (active_game_request_ == self_riot_id) {
             return;
         }
-        active_game_request_ = self_puuid;
+        active_game_request_ = self_riot_id;
     }
     wake_.notify_one();
 }
@@ -92,8 +84,7 @@ ProfileService::Progress ProfileService::Status() const {
 void ProfileService::Worker() {
     for (;;) {
         std::string riot_id;
-        std::string spectate_puuid;
-        std::vector<std::pair<std::string, std::string>> hints;
+        std::string spectate_riot_id;
         {
             std::unique_lock<std::mutex> lock(mutex_);
             wake_.wait(lock, [this] {
@@ -102,11 +93,10 @@ void ProfileService::Worker() {
             if (stop_) {
                 return;
             }
-            hints.swap(hints_);
             // Состав игры важнее очередного профиля: он сам заказывает
             // профили всех десяти, и чем раньше, тем раньше они готовы.
             if (!active_game_request_.empty()) {
-                spectate_puuid = std::move(active_game_request_);
+                spectate_riot_id = std::move(active_game_request_);
                 active_game_request_.clear();
             } else {
                 riot_id = std::move(queue_.front());
@@ -115,13 +105,12 @@ void ProfileService::Worker() {
             running_ = true;
         }
 
-        for (const auto& [hint_riot_id, hint_puuid] : hints) {
-            client_->RememberPuuid(hint_riot_id, hint_puuid);
-        }
-
-        if (!spectate_puuid.empty()) {
+        if (!spectate_riot_id.empty()) {
             Log("лобби: spectator-v5 — состав идущей игры");
-            auto members = client_->LoadActiveGame(spectate_puuid);
+            std::optional<std::vector<LobbyMember>> members;
+            if (const auto self_puuid = client_->ResolvePuuid(spectate_riot_id)) {
+                members = client_->LoadActiveGame(*self_puuid);
+            }
             const int status = client_->LastStatus();
             std::vector<std::string> riot_ids;
             if (members) {
@@ -136,7 +125,6 @@ void ProfileService::Worker() {
             {
                 const std::lock_guard<std::mutex> lock(mutex_);
                 running_ = false;
-                active_game_.self_puuid = spectate_puuid;
                 active_game_.attempted = true;
                 active_game_.status = status;
                 active_game_.members = std::move(members);

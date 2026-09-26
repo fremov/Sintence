@@ -32,7 +32,7 @@ constexpr const char* kTimeline = R"({
      "events": [
        {"type": "SKILL_LEVEL_UP", "participantId": 1, "skillSlot": 4},
        {"type": "ITEM_PURCHASED", "participantId": 2, "itemId": 3134, "timestamp": 130000},
-       {"type": "CHAMPION_KILL", "killerId": 2, "victimId": 1},
+       {"type": "CHAMPION_KILL", "killerId": 2, "victimId": 1, "timestamp": 125000},
        {"type": "SKILL_LEVEL_UP", "participantId": 7, "skillSlot": 1}
      ]}
   ]}
@@ -77,4 +77,12 @@ TEST_CASE("ParseMatchTimeline: мусор — nullopt") {
     CHECK_FALSE(
         ParseMatchTimeline(R"({"metadata": {"participants": []}, "info": {"frames": 1}})")
             .has_value());
+}
+
+TEST_CASE("ParseMatchTimeline: время смертей") {
+    const auto timeline = ParseMatchTimeline(kTimeline);
+    REQUIRE(timeline.has_value());
+    REQUIRE(timeline->participants[0].death_seconds.size() == 1);
+    CHECK(timeline->participants[0].death_seconds[0] == 125);
+    CHECK(timeline->participants[1].death_seconds.empty());
 }
