@@ -14,13 +14,14 @@
 #include <atomic>
 #include <chrono>
 #include <format>
-#include <fstream>
 #include <optional>
-#include <print>
 #include <string>
 
+#include "app_log.h"
 #include "json.hpp"
 #include "profile_window.h"
+#include "resource.h"
+#include "tray_icon.h"
 
 using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
@@ -63,21 +64,50 @@ bool IsAllowedToggleKey(UINT key) {
 // а показывает окно уже оконная процедура.
 constexpr UINT WM_APP_TOGGLE_PANEL = WM_APP + 1;
 
+// События значка в трее (app/tray_icon).
+constexpr UINT WM_APP_TRAY = WM_APP + 2;
+
+// Второй запуск sintence.exe просит первый показать окно статистики
+// (AcquireSingleInstance) и завершается.
+constexpr UINT WM_APP_SHOW_PROFILE = WM_APP + 3;
+
+constexpr wchar_t kOverlayClass[] = L"SintenceOverlay";
+
 // Хуку нужен доступ к окну, а сигнатуру обратного вызова задаёт Windows:
 // протащить туда параметр нельзя, отсюда глобальные переменные.
 HHOOK g_keyboard_hook = nullptr;
 HWND g_overlay_window = nullptr;
 
-// Журнал рядом с exe. Нужен потому, что главные события происходят, когда
-// на экране игра: консоль не видно, а подключиться отладчиком к процессу
-// поверх полноэкранного приложения — отдельное приключение.
-// Каждая строка сбрасывается на диск сразу: журнал, потерянный при
-// аварийном завершении, бесполезен ровно тогда, когда нужен.
-void Log(std::string_view message) {
-    static std::ofstream file("overlay.log", std::ios::app);
-    const auto now = std::chrono::current_zone()->to_local(std::chrono::system_clock::now());
-    file << std::format("{:%H:%M:%S} {}\n", std::chrono::floor<std::chrono::seconds>(now), message);
-    file.flush();
+// Трей живёт в оконной процедуре оверлея: окно оверлея есть всегда,
+// а окна статистики может не быть (SINTENCE_NO_PROFILE).
+HWND g_profile_window = nullptr;
+TrayIcon g_tray;
+HICON g_icon = nullptr;
+HICON g_small_icon = nullptr;
+bool g_tray_hint_shown = false;
+// Проводник перезапустился — значки в трее надо ставить заново.
+const UINT g_taskbar_created = RegisterWindowMessageW(L"TaskbarCreated");
+
+// Заголовок окна оверлея с портом: по нему второй запуск находит первый
+// именно своей копии (отладочная на 8778 рабочую на 8777 не трогает).
+std::wstring OverlayTitle(int port) {
+    return L"Sintence overlay :" + std::to_wstring(port);
+}
+
+std::wstring Widen(std::string_view text) {
+    if (text.empty()) {
+        return {};
+    }
+    const int size = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()),
+                                         nullptr, 0);
+    std::wstring result(static_cast<std::size_t>(size), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(),
+                        size);
+    return result;
+}
+
+void AddTrayIcon(HWND hwnd) {
+    g_tray.Add(hwnd, WM_APP_TRAY, g_small_icon, L"Sintence — PgDn: оверлей");
 }
 
 // Запущены ли мы от администратора. Без повышения Windows не отдаёт
@@ -239,7 +269,7 @@ void HandleWebMessage(HWND hwnd, OverlayState& state, const std::string& json_te
         return;
     }
     if (type != "overlay/config") {
-        Log(std::format("неизвестное сообщение от интерфейса: {}", type));
+        Log("неизвестное сообщение от интерфейса: {}", type);
         return;
     }
 
@@ -287,12 +317,12 @@ void HandleWebMessage(HWND hwnd, OverlayState& state, const std::string& json_te
         if (IsAllowedToggleKey(vk)) {
             g_toggle_key.store(vk);
         } else {
-            Log(std::format("клавиша {} для панели не разрешена, остаётся прежняя", vk));
+            Log("клавиша {} для панели не разрешена, остаётся прежняя", vk);
         }
     }
 
-    Log(std::format("настройки окна от интерфейса: {}x{}, доля экрана {:.2f}", state.width,
-                    state.height, state.max_screen_share));
+    Log("настройки окна от интерфейса: {}x{}, доля экрана {:.2f}", state.width,
+                    state.height, state.max_screen_share);
 
     // Панель уже на экране — переставить сразу, а не при следующем показе.
     if (state.visible) {
@@ -364,8 +394,8 @@ void ApplyVisibility(HWND hwnd, OverlayState& state, bool visible) {
         AttachThreadInput(foreground_thread, this_thread, FALSE);
     }
 
-    Log(std::format("панель показана: SetForegroundWindow={} передний план был у потока {}",
-                    brought ? "ок" : "ОТКАЗ", foreground_thread));
+    Log("панель показана: SetForegroundWindow={} передний план был у потока {}",
+                    brought ? "ок" : "ОТКАЗ", foreground_thread);
 
     if (!state.controller) {
         Log("контроллер WebView2 ещё не создан — окно будет пустым");
@@ -393,15 +423,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
             }
             return 0;
 
-
-
         // Оба входа ведут в одно действие: хук клавиатуры (основной путь,
         // работает в игре) и системная горячая клавиша (запасной, если хук
         // не установился).
         case WM_APP_TOGGLE_PANEL:
         case WM_HOTKEY:
-            Log(message == WM_HOTKEY ? "PgDn: системная горячая клавиша"
-                                     : "PgDn: хук клавиатуры");
+            LogText(message == WM_HOTKEY ? "PgDn: системная горячая клавиша"
+                                         : "PgDn: хук клавиатуры");
             if (state) {
                 state->visible = !state->visible;
                 ApplyVisibility(hwnd, *state, state->visible);
@@ -417,12 +445,64 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
             }
             return 0;
 
+        // Значок в трее: щелчок — окно статистики (без него — оверлей),
+        // правая кнопка — меню.
+        case WM_APP_TRAY:
+            switch (LOWORD(lparam)) {
+                case NIN_SELECT:
+                case NIN_KEYSELECT:
+                    PostMessageW(hwnd, WM_COMMAND,
+                                 g_profile_window ? kTrayShowProfile : kTrayToggleOverlay, 0);
+                    break;
+                case WM_CONTEXTMENU:
+                    g_tray.ShowMenu(g_profile_window != nullptr, state && state->visible);
+                    break;
+                default:
+                    break;
+            }
+            return 0;
+
+        case WM_APP_SHOW_PROFILE:
+            Log("повторный запуск sintence.exe — показываю уже запущенный");
+            PostMessageW(hwnd, WM_COMMAND,
+                         g_profile_window ? kTrayShowProfile : kTrayToggleOverlay, 0);
+            return 0;
+
+        case WM_COMMAND:
+            switch (LOWORD(wparam)) {
+                case kTrayShowProfile:
+                    ShowProfileWindow(g_profile_window);
+                    break;
+                case kTrayToggleOverlay:
+                    PostMessageW(hwnd, WM_APP_TOGGLE_PANEL, 0, 0);
+                    break;
+                case kTrayExit:
+                    // Единственный штатный выход. Значок убирается сразу:
+                    // иначе он висит в трее, пока над ним не проведут мышью.
+                    Log("выход из меню трея");
+                    g_tray.Remove();
+                    if (g_profile_window != nullptr) {
+                        DestroyWindow(g_profile_window);
+                        g_profile_window = nullptr;
+                    }
+                    DestroyWindow(hwnd);
+                    break;
+                default:
+                    break;
+            }
+            return 0;
+
         case WM_DESTROY:
             PostQuitMessage(0);
             return 0;
 
         default:
             break;
+    }
+    if (message == g_taskbar_created && g_taskbar_created != 0) {
+        Log("проводник перезапущен — ставлю значок в трей заново");
+        AddTrayIcon(hwnd);
+        return 0;
     }
     return DefWindowProcW(hwnd, message, wparam, lparam);
 }
@@ -440,15 +520,26 @@ int RunOverlay(const OverlayOptions& options) {
 
     const HINSTANCE instance = GetModuleHandleW(nullptr);
 
+    // Иконка из ресурсов exe (app/sintence.rc) в двух размерах: большая —
+    // заголовок и Alt+Tab, малая — трей и панель задач.
+    g_icon = static_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(IDI_SINTENCE), IMAGE_ICON,
+                                           GetSystemMetrics(SM_CXICON),
+                                           GetSystemMetrics(SM_CYICON), LR_DEFAULTCOLOR));
+    g_small_icon = static_cast<HICON>(
+        LoadImageW(instance, MAKEINTRESOURCEW(IDI_SINTENCE), IMAGE_ICON,
+                   GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR));
+
     WNDCLASSEXW window_class = {};
     window_class.cbSize = sizeof(window_class);
     window_class.lpfnWndProc = WindowProc;
     window_class.hInstance = instance;
     window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     window_class.hbrBackground = CreateSolidBrush(kPanelBackground);
-    window_class.lpszClassName = L"SintenceOverlay";
+    window_class.hIcon = g_icon;
+    window_class.hIconSm = g_small_icon;
+    window_class.lpszClassName = kOverlayClass;
     if (RegisterClassExW(&window_class) == 0) {
-        std::println("RegisterClassExW не прошёл: код {}", GetLastError());
+        LogError("RegisterClassExW не прошёл: код {}", GetLastError());
         return 1;
     }
 
@@ -466,12 +557,12 @@ int RunOverlay(const OverlayOptions& options) {
     // нажатия продолжали уходить в игру.
     HWND hwnd = CreateWindowExW(
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-        window_class.lpszClassName, options.title.c_str(), WS_POPUP,
+        window_class.lpszClassName, OverlayTitle(options.port).c_str(), WS_POPUP,
         // Координаты здесь неважны: панель центрируется при каждом показе.
         0, 0, options.width, options.height,
         nullptr, nullptr, instance, nullptr);
     if (hwnd == nullptr) {
-        std::println("не удалось создать окно: код {}", GetLastError());
+        LogError("не удалось создать окно: код {}", GetLastError());
         return 1;
     }
 
@@ -481,9 +572,9 @@ int RunOverlay(const OverlayOptions& options) {
     // Первое появление — по PgDn.
 
     const bool elevated = IsElevated();
-    Log(std::format("--- запуск, права администратора: {}", elevated ? "есть" : "НЕТ"));
+    Log("права администратора: {}", elevated ? "есть" : "НЕТ");
     if (!elevated) {
-        std::println("ВНИМАНИЕ: нет прав администратора — панель не поднимется "
+        Log("ВНИМАНИЕ: нет прав администратора — панель не поднимется "
                      "поверх игры");
     }
 
@@ -491,7 +582,7 @@ int RunOverlay(const OverlayOptions& options) {
     g_overlay_window = hwnd;
     g_keyboard_hook = SetWindowsHookExW(WH_KEYBOARD_LL, KeyboardHook, instance, 0);
     if (g_keyboard_hook == nullptr) {
-        Log(std::format("хук клавиатуры не встал, код {}", GetLastError()));
+        LogError("хук клавиатуры не встал, код {}", GetLastError());
     } else {
         Log("хук клавиатуры установлен");
     }
@@ -501,33 +592,56 @@ int RunOverlay(const OverlayOptions& options) {
     // MOD_NOREPEAT — иначе зажатая клавиша переключает панель десятки раз.
     if (g_keyboard_hook == nullptr &&
         !RegisterHotKey(hwnd, kHotkeyVisibilityId, MOD_NOREPEAT, VK_NEXT)) {
-        Log(std::format("RegisterHotKey(PgDn) тоже не прошёл, код {}", GetLastError()));
-        std::println("PgDn перехватить нечем — панель не открыть");
+        LogError("RegisterHotKey(PgDn) тоже не прошёл, код {}", GetLastError());
+        LogError("PgDn перехватить нечем — панель не открыть");
     }
 
-    // Окно профиля показывается сразу, WebView2 в нём поднимется вместе
+    // Приложение живёт в трее: значок ставится до окон, чтобы выйти
+    // можно было, даже если WebView2 не поднимется.
+    AddTrayIcon(hwnd);
+
+    // Окно статистики показывается сразу, WebView2 в нём поднимется вместе
     // с оверлейным — на общем окружении.
     HWND profile_window = nullptr;
     if (!options.profile_url.empty()) {
         ProfileWindowOptions profile_options;
         profile_options.url = options.profile_url;
         profile_options.title = options.title;
+        profile_options.icon = g_icon;
+        profile_options.small_icon = g_small_icon;
+        // Первый раз за запуск — подсказка, куда делось окно. Дальше молча:
+        // уведомление на каждый крестик быстро надоест.
+        profile_options.on_hide = [] {
+            if (!g_tray_hint_shown) {
+                g_tray_hint_shown = true;
+                g_tray.Notify(L"Sintence работает в фоне",
+                              L"PgDn — оверлей. Окно статистики и выход — через значок в трее.");
+            }
+        };
         profile_window = CreateProfileWindow(instance, profile_options);
     }
+    g_profile_window = profile_window;
 
-    std::println("PgDn — показать или спрятать панель (клавишу может сменить интерфейс)");
-    std::println("журнал событий: overlay.log рядом с exe");
+    Log("PgDn — показать или спрятать панель (клавишу может сменить интерфейс)");
 
     const std::wstring url = options.url;
 
+    // Данные WebView2 (кеш, localStorage интерфейса) — в профиле
+    // пользователя, а не рядом с exe: в Program Files писать нельзя.
+    const std::wstring user_data = options.user_data_dir;
+
     CreateCoreWebView2EnvironmentWithOptions(
-        nullptr, nullptr, nullptr,
+        nullptr, user_data.empty() ? nullptr : user_data.c_str(), nullptr,
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [hwnd, url, profile_window](HRESULT result,
                                         ICoreWebView2Environment* environment) -> HRESULT {
                 if (FAILED(result) || environment == nullptr) {
-                    std::println("WebView2 не поднялся: рантайм не установлен?");
-                    PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                    LogError("WebView2 не поднялся, код {:#x}", static_cast<unsigned>(result));
+                    ShowErrorBox(
+                        "Не удалось запустить WebView2 — компонент Windows, в котором "
+                        "Sintence рисует интерфейс.\n\nУстановите Microsoft Edge WebView2 "
+                        "Runtime с сайта Microsoft и запустите Sintence снова.");
+                    PostMessageW(hwnd, WM_COMMAND, kTrayExit, 0);
                     return S_OK;
                 }
                 AttachProfileWebView(profile_window, environment);
@@ -610,6 +724,8 @@ int RunOverlay(const OverlayOptions& options) {
         DispatchMessageW(&message);
     }
 
+    g_tray.Remove();
+    g_profile_window = nullptr;
     if (g_keyboard_hook != nullptr) {
         UnhookWindowsHookEx(g_keyboard_hook);
         g_keyboard_hook = nullptr;
@@ -618,6 +734,32 @@ int RunOverlay(const OverlayOptions& options) {
     g_overlay_window = nullptr;
     CoUninitialize();
     return 0;
+}
+
+void ShowErrorBox(std::string_view text) {
+    LogError("{}", text);
+    MessageBoxW(nullptr, Widen(text).c_str(), L"Sintence", MB_OK | MB_ICONERROR | MB_TOPMOST);
+}
+
+bool AcquireSingleInstance(int port) {
+    // Мьютекс на порт: рабочая копия и отладочная (SINTENCE_PORT=8778)
+    // друг другу не мешают. Хэндл не закрывается — живёт до конца процесса.
+    const std::wstring name = L"Local\\Sintence-" + std::to_wstring(port);
+    CreateMutexW(nullptr, FALSE, name.c_str());
+    if (GetLastError() != ERROR_ALREADY_EXISTS) {
+        return true;
+    }
+    const HWND running = FindWindowW(kOverlayClass, OverlayTitle(port).c_str());
+    if (running != nullptr) {
+        // Передний план сейчас у нас (пользователь только что запустил
+        // exe) — делимся им, иначе окно первой копии не выйдет вперёд.
+        DWORD pid = 0;
+        GetWindowThreadProcessId(running, &pid);
+        AllowSetForegroundWindow(pid);
+        PostMessageW(running, WM_APP_SHOW_PROFILE, 0, 0);
+    }
+    Log("sintence.exe на порту {} уже запущен — показываю его окно и выхожу", port);
+    return false;
 }
 
 }  // namespace sintence

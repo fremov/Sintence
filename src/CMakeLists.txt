@@ -73,7 +73,20 @@ add_executable(sintence
     app/overlay_window.h
     app/profile_window.cpp
     app/profile_window.h
+    app/tray_icon.cpp
+    app/tray_icon.h
+    app/resource.h
+    app/sintence.rc
     app/sintence.manifest)
+
+# Оконное приложение: без консоли. Точка входа остаётся main —
+# /ENTRY:mainCRTStartup вместо WinMain, которого требовала бы подсистема
+# WINDOWS по умолчанию. Всё, что раньше печаталось в консоль, пишется
+# в журнал %LOCALAPPDATA%\Sintence\logs\sintence.log (data/app_log).
+set_target_properties(sintence PROPERTIES WIN32_EXECUTABLE TRUE)
+if(MSVC)
+    target_link_options(sintence PRIVATE "/ENTRY:mainCRTStartup")
+endif()
 
 # Манифест встраивается в exe: совместимость с версиями Windows и DPI.
 # Права администратора — отдельным флагом линкера, иначе MSVC и наш манифест

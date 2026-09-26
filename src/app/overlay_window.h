@@ -2,6 +2,7 @@
 #define SINTENCE_APP_OVERLAY_WINDOW_H
 
 #include <string>
+#include <string_view>
 
 // app/overlay_window — окно поверх игры с WebView2 внутри.
 //
@@ -32,9 +33,15 @@ struct OverlayOptions {
     int width = 2240;
     int height = 1280;
 
-    // Окно профиля (app/profile_window) — главное окно приложения: с ним
-    // оверлей живёт до его закрытия. Пусто — только оверлей, выход по Ctrl+C.
+    // Окно статистики (app/profile_window). Пусто — только оверлей.
     std::wstring profile_url;
+
+    // Порт сервера данных: по нему второй запуск находит своё окно
+    // (AcquireSingleInstance).
+    int port = 8777;
+
+    // Каталог данных WebView2 (кеш, localStorage). Пусто — рядом с exe.
+    std::wstring user_data_dir;
 };
 
 // Создаёт окно СКРЫТЫМ, поднимает WebView2 и крутит цикл сообщений.
@@ -56,9 +63,20 @@ struct OverlayOptions {
 // системные горячие клавиши, пока игра активна.
 //
 // Права администратора нужны, чтобы окно поднималось поверх игры с анти-читом
-// (app/sintence.manifest и /MANIFESTUAC в src/CMakeLists.txt). Выход из
-// программы — закрыть окно профиля или Ctrl+C в консоли.
+// (app/sintence.manifest и /MANIFESTUAC в src/CMakeLists.txt).
+//
+// Консоли у приложения нет, оно живёт в трее (app/tray_icon): крестик окна
+// статистики прячет его, PgDn работает дальше. Выход — «Выход» в меню
+// значка; снятая в диспетчере задач программа просто исчезает.
 int RunOverlay(const OverlayOptions& options);
+
+// Одна копия на порт. false — копия уже запущена: ей отправлена просьба
+// показать окно статистики, этой копии надо завершиться.
+bool AcquireSingleInstance(int port);
+
+// Ошибка, из-за которой приложение не может работать: в журнал и окном
+// сообщения: консоли, где её раньше было видно, у приложения нет.
+void ShowErrorBox(std::string_view text);
 
 }  // namespace sintence
 

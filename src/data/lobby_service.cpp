@@ -1,10 +1,11 @@
 #include "lobby_service.h"
 
 #include <format>
-#include <print>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "app_log.h"
 
 namespace sintence {
 
@@ -62,7 +63,7 @@ void LobbyService::Tick() {
     if (!phase) {
         // Клиент закрыт. Свой аккаунт мог смениться — забываем.
         if (!last_phase_.empty()) {
-            std::println("лобби: клиент League не найден");
+            Log("лобби: клиент League не найден");
         }
         self_.reset();
         last_phase_.clear();
@@ -73,7 +74,7 @@ void LobbyService::Tick() {
 
     next.phase = *phase;
     if (next.phase != last_phase_) {
-        std::println("лобби: этап {} -> {}", last_phase_.empty() ? "-" : last_phase_,
+        Log("лобби: этап {} -> {}", last_phase_.empty() ? "-" : last_phase_,
                      next.phase);
         // Новый выбор чемпиона или возврат в лобби — прошлая игра кончилась.
         if (!InGamePhase(next.phase) && profiles_ != nullptr) {
@@ -87,7 +88,7 @@ void LobbyService::Tick() {
         if (const auto body = lcu_.Get("/lol-summoner/v1/current-summoner")) {
             self_ = ParseCurrentSummoner(*body);
             if (self_) {
-                std::println("лобби: клиент League найден, аккаунт {}", self_->riot_id);
+                Log("лобби: клиент League найден, аккаунт {}", self_->riot_id);
             }
         }
     }

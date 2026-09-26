@@ -8,10 +8,10 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
-#include <print>
 #include <thread>
 #include <utility>
 
+#include "app_log.h"
 #include "riot_api_json.h"
 
 namespace sintence {
@@ -132,7 +132,7 @@ std::optional<std::string> RiotApiClient::Get(const std::string& host,
     for (int attempt = 0; attempt < 2; ++attempt) {
         const auto delay = limiter_.DelayUntilAllowed(RateLimiter::Clock::now());
         if (delay > std::chrono::milliseconds{0}) {
-            std::println("riot: жду {} мс — лимит ключа ({} за секунду, {} за 2 минуты)",
+            Log("riot: жду {} мс — лимит ключа ({} за секунду, {} за 2 минуты)",
                          delay.count(), limiter_.Used(0, RateLimiter::Clock::now()),
                          limiter_.Used(1, RateLimiter::Clock::now()));
             std::this_thread::sleep_for(delay);
@@ -151,12 +151,12 @@ std::optional<std::string> RiotApiClient::Get(const std::string& host,
 
         if (!response) {
             last_status_ = 0;
-            std::println("riot: нет ответа от {} ({}) за {} мс", host, path, elapsed.count());
+            LogError("riot: нет ответа от {} ({}) за {} мс", host, path, elapsed.count());
             return std::nullopt;
         }
         last_status_ = response->status;
 
-        std::println("riot: {} {} -> {} за {} мс [окно: {}/20 за с, {}/100 за 2 мин]",
+        Log("riot: {} {} -> {} за {} мс [окно: {}/20 за с, {}/100 за 2 мин]",
                      host, path, response->status, elapsed.count(),
                      limiter_.Used(0, now), limiter_.Used(1, now));
 
@@ -165,21 +165,21 @@ std::optional<std::string> RiotApiClient::Get(const std::string& host,
         }
         if (response->status == 429) {
             const int seconds = RetryAfterSeconds(*response);
-            std::println("riot: 429, пауза {} с, один повтор", seconds);
+            Log("riot: 429, пауза {} с, один повтор", seconds);
             limiter_.BlockUntil(now + std::chrono::seconds{seconds});
             continue;  // один повтор, и только после паузы
         }
         if (response->status == 401) {
             // Ключа в заголовке фактически не было: пустая строка, BOM
             // в начале файла или мусор вместо RGAPI-...
-            std::println("riot: 401 — ключ не дошёл до Riot; проверь "
+            LogError("riot: 401 — ключ не дошёл до Riot; проверь "
                          "SINTENCE_RIOT_KEY или riot_key.txt (длина ключа {})",
                          api_key_.size());
             return std::nullopt;
         }
         if (response->status == 403) {
             // Ключ в журнал не попадает ни при каких обстоятельствах.
-            std::println("riot: 403 — ключ недействителен или истёк");
+            LogError("riot: 403 — ключ недействителен или истёк");
             return std::nullopt;
         }
         if (response->status == 404) {
@@ -188,7 +188,7 @@ std::optional<std::string> RiotApiClient::Get(const std::string& host,
         }
         return std::nullopt;
     }
-    std::println("riot: повтор после 429 не удался ({})", path);
+    LogError("riot: повтор после 429 не удался ({})", path);
     return std::nullopt;
 }
 
@@ -196,14 +196,14 @@ std::optional<std::string> RiotApiClient::ResolvePuuid(std::string_view riot_id)
     const std::lock_guard<std::recursive_mutex> lock(mutex_);
     const std::string key(riot_id);
     if (const auto cached = puuid_cache_.find(key); cached != puuid_cache_.end()) {
-        std::println("riot: puuid для {} взят из кеша — запроса нет", key);
+        Log("riot: puuid для {} взят из кеша — запроса нет", key);
         return cached->second;
     }
 
     const auto split = SplitRiotId(riot_id);
     if (!split) {
         // Бот или заглушка клиента: у живого игрока тег есть всегда.
-        std::println("riot: {} — не Riot ID (нет тега), запрос не отправляю", key);
+        Log("riot: {} — не Riot ID (нет тега), запрос не отправляю", key);
         return std::nullopt;
     }
 
@@ -237,12 +237,12 @@ std::string RiotApiClient::ResolvePlatformHost(const std::string& puuid) {
     if (body) {
         if (const auto region = ParseActiveRegion(*body)) {
             if (auto resolved = PlatformHost(*region)) {
-                std::println("riot: регион аккаунта — {} ({})", *region, *resolved);
+                Log("riot: регион аккаунта — {} ({})", *region, *resolved);
                 host = std::move(*resolved);
             }
         }
     } else {
-        std::println("riot: регион не определён, беру запасной {}", host);
+        Log("riot: регион не определён, беру запасной {}", host);
     }
 
     platform_cache_.emplace(puuid, host);
@@ -268,7 +268,7 @@ std::optional<PlayerProfile> RiotApiClient::LoadProfile(std::string_view riot_id
             if (const RankedStats* solo = FindQueue(*entries, "RANKED_SOLO_5x5")) {
                 profile.solo_queue = *solo;
             } else {
-                std::println("riot: {} — записей {}, соло-очереди среди них нет",
+                Log("riot: {} — записей {}, соло-очереди среди них нет",
                              profile.riot_id, entries->size());
             }
         }

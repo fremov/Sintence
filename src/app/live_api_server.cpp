@@ -4,13 +4,13 @@
 #include <atomic>
 #include <charconv>
 #include <format>
-#include <print>
 #include <thread>
 #include <unordered_map>
 #include <utility>
 
 #include <httplib.h>
 
+#include "app_log.h"
 #include "json.hpp"
 #include "lcu_actions.h"
 #include "profile_summary.h"
@@ -647,7 +647,7 @@ bool LiveApiServer::Start() {
             impl_->profiles->Request(riot_ids);
             const ProfileService::Progress after = impl_->profiles->Status();
             if (after.total != before.total) {
-                std::println("профили: заказано игроков — {} (ботов пропущено {}, "
+                Log("профили: заказано игроков — {} (ботов пропущено {}, "
                              "без тега {}), всего в очереди {}",
                              riot_ids.size(), bots, nameless, after.total);
             }

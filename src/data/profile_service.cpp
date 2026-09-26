@@ -1,8 +1,9 @@
 #include "profile_service.h"
 
 #include <chrono>
-#include <print>
 #include <utility>
+
+#include "app_log.h"
 
 namespace sintence {
 
@@ -119,7 +120,7 @@ void ProfileService::Worker() {
         }
 
         if (!spectate_puuid.empty()) {
-            std::println("лобби: spectator-v5 — состав идущей игры");
+            Log("лобби: spectator-v5 — состав идущей игры");
             auto members = client_->LoadActiveGame(spectate_puuid);
             const int status = client_->LastStatus();
             std::vector<std::string> riot_ids;
@@ -127,9 +128,9 @@ void ProfileService::Worker() {
                 for (const LobbyMember& member : *members) {
                     riot_ids.push_back(member.riot_id);
                 }
-                std::println("лобби: в игре {} участников, заказываю профили", members->size());
+                Log("лобби: в игре {} участников, заказываю профили", members->size());
             } else {
-                std::println("лобби: spectator-v5 игры не знает (ещё не началась "
+                Log("лобби: spectator-v5 игры не знает (ещё не началась "
                              "или не наблюдаема)");
             }
             {
@@ -144,7 +145,7 @@ void ProfileService::Worker() {
             continue;
         }
 
-        std::println("профиль: запрашиваю {}", riot_id);
+        Log("профиль: запрашиваю {}", riot_id);
         const auto started = std::chrono::steady_clock::now();
 
         // Сеть — вне блокировки: пока идёт запрос, интерфейс продолжает
@@ -159,7 +160,7 @@ void ProfileService::Worker() {
             running_ = false;
             known_[riot_id] = true;
             if (profile) {
-                std::println("профиль: {} готов за {} мс (соло-ранг: {}, мастери: {})",
+                Log("профиль: {} готов за {} мс (соло-ранг: {}, мастери: {})",
                              riot_id, elapsed.count(),
                              profile->solo_queue ? "есть" : "нет",
                              profile->top_masteries.size());
@@ -167,7 +168,7 @@ void ProfileService::Worker() {
             } else {
                 // Не вышло — из общего счётчика вычитаем, иначе прогресс
                 // навсегда застрянет на «9 из 10».
-                std::println("профиль: {} не получен за {} мс", riot_id, elapsed.count());
+                Log("профиль: {} не получен за {} мс", riot_id, elapsed.count());
                 --total_;
             }
         }

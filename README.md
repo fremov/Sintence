@@ -22,7 +22,12 @@ use, copying, modification and redistribution require written permission — see
 **Live match overlay.** `PgDn` shows and hides a panel centred on the screen:
 game time, mode, map, and both teams as cards — champion, Riot ID, role, level,
 K/D/A, creep score and CS per minute. Refreshed once per second. Pressing `PgDn`
-again hides the panel; `Ctrl+C` in the console quits the program.
+again hides the panel.
+
+**Tray application, no console.** The statistics window opens on start; its close
+button hides it to the tray and `PgDn` keeps working. The program quits only from
+the tray menu (or Task Manager). Everything that happens is written to
+`%LOCALAPPDATA%\Sintence\logs\sintence.log`.
 
 **Match history analysis.** Match-V5 data from a local dump: per-champion
 aggregation, win rate, KDA, CS/min, top lists and filters by sample size.

@@ -18,15 +18,17 @@
 //   SINTENCE_PORT    — порт локального сервера, по умолчанию 8777. Нужен, чтобы
 //                      запустить вторую копию (отладочную сборку) рядом с рабочей
 
+#include <process.h>  // _getpid
+
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <memory>
 #include <optional>
-#include <print>
 #include <string>
 
+#include "app_log.h"
 #include "history_service.h"
 #include "live_api_server.h"
 #include "live_client_source.h"
@@ -36,6 +38,9 @@
 #include "profile_service.h"
 #include "riot_api_client.h"
 #include "sqlite_match_store.h"
+
+using sintence::Log;
+using sintence::LogError;
 
 namespace {
 
@@ -75,10 +80,19 @@ int PortFromEnv() {
 }
 
 int main() {
-    // Консоль здесь — журнал отладки. Буферизация означает, что при аварийном
-    // завершении последние сообщения (ровно те, что объясняют причину)
-    // теряются вместе с буфером.
-    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    // Консоли нет (оконное приложение, /SUBSYSTEM:WINDOWS в CMakeLists):
+    // всё, что происходит, пишется в журнал %LOCALAPPDATA%\Sintence\logs.
+    const int port = PortFromEnv();
+
+    // Вторая копия не нужна: она подралась бы с первой за порт и за PgDn.
+    // Повторный запуск просто показывает окно уже запущенной.
+    if (!sintence::AcquireSingleInstance(port)) {
+        return 0;
+    }
+
+    const auto log_path = sintence::DefaultLogPath(port);
+    sintence::OpenLogFile(log_path);
+    Log("===== запуск Sintence, pid {}, порт {} =====", _getpid(), port);
 
     const sintence::LiveClientSource live_source;
 
@@ -93,9 +107,9 @@ int main() {
         riot = std::make_shared<sintence::RiotApiClient>(*key, "ru.api.riotgames.com",
                                                          "europe.api.riotgames.com");
         profiles = std::make_unique<sintence::ProfileService>(riot);
-        std::println("ключ Riot найден: профили игроков включены");
+        Log("ключ Riot найден: профили игроков включены");
     } else {
-        std::println("ключа Riot нет — профили выключены "
+        Log("ключа Riot нет — профили выключены "
                      "(SINTENCE_RIOT_KEY или %LOCALAPPDATA%\\Sintence\\riot_key.txt)");
     }
 
@@ -105,10 +119,10 @@ int main() {
     std::optional<sintence::PreferencePack> pack =
         sintence::PreferencePack::LoadFromDirectory(SINTENCE_PACKS_DIR);
     if (pack) {
-        std::println("пак предпочтений: патч {}, регион {}, бакетов {}",
+        Log("пак предпочтений: патч {}, регион {}, бакетов {}",
                      pack->Patch(), pack->Region(), pack->Size());
     } else {
-        std::println("пака предпочтений нет — соберите его: "
+        Log("пака предпочтений нет — соберите его: "
                      "python scripts/build_pack.py");
     }
 
@@ -120,10 +134,11 @@ int main() {
     }
     const std::string ui_url = EnvOrEmpty("SINTENCE_UI_URL");
     if (ui_url.empty() && !std::filesystem::exists(std::filesystem::path(web_dir) / "index.html")) {
-        std::println("интерфейс не собран: нет {}/index.html\n"
-                     "  собери его: cd ../sintence-web && npm run build\n"
-                     "  или укажи каталог: SINTENCE_WEB_DIR=<путь к dist>",
-                     web_dir);
+        sintence::ShowErrorBox(std::format(
+            "Интерфейс не собран: нет {}/index.html.\n\n"
+            "Соберите его (cd ../sintence-web && npm run build) или укажите каталог "
+            "переменной SINTENCE_WEB_DIR. Окна будут пустыми.",
+            web_dir));
     }
 
     // История матчей игроков — окно профиля. Сейчас SQLite на машине
@@ -137,9 +152,9 @@ int main() {
     std::unique_ptr<sintence::HistoryService> history;
     if (store && riot) {
         history = std::make_unique<sintence::HistoryService>(riot, *store, profiles.get());
-        std::println("история матчей: {}", history_path);
+        Log("история матчей: {}", history_path);
     } else if (!store) {
-        std::println("история матчей недоступна: не открыть {}", history_path);
+        LogError("история матчей недоступна: не открыть {}", history_path);
     }
 
     // Состав до начала матча: выбор чемпиона из клиента League (LCU)
@@ -147,27 +162,32 @@ int main() {
     // тогда без профилей. Клиент не запущен — просто пустое лобби.
     const sintence::LobbyService lobby(profiles.get());
 
-    const int port = PortFromEnv();
     sintence::LiveApiServer server(live_source, web_dir, port, profiles.get(),
                                    pack ? &*pack : nullptr, &lobby, store.get(),
                                    history.get());
     if (!server.Start()) {
-        std::println("не удалось занять порт {} — он уже кем-то занят", server.Port());
+        sintence::ShowErrorBox(std::format(
+            "Порт {} занят другой программой — Sintence не может запустить сервер данных.\n\n"
+            "Закройте её или задайте другой порт переменной SINTENCE_PORT.",
+            server.Port()));
         return 1;
     }
-    std::println("сервер данных: http://127.0.0.1:{}/api/live", server.Port());
-    std::println("игра {}", live_source.IsAvailable() ? "идёт" : "не запущена");
+    Log("сервер данных: http://127.0.0.1:{}/api/live", server.Port());
+    Log("игра {}", live_source.IsAvailable() ? "идёт" : "не запущена");
 
     sintence::OverlayOptions options;
+    options.port = port;
+    // Рядом с журналом: %LOCALAPPDATA%\Sintence\WebView2.
+    options.user_data_dir = (log_path.parent_path().parent_path() / L"WebView2").wstring();
     const std::string own_url = std::format("http://127.0.0.1:{}/", port);
     options.url = std::wstring(own_url.begin(), own_url.end());
     if (!ui_url.empty()) {
         // Адрес — ASCII (схема, хост, порт), поэтому побайтовое расширение
         // до wchar_t здесь корректно.
         options.url = std::wstring(ui_url.begin(), ui_url.end());
-        std::println("окно показывает {} (SINTENCE_UI_URL)", ui_url);
+        Log("окно показывает {} (SINTENCE_UI_URL)", ui_url);
     } else {
-        std::println("интерфейс: {}", web_dir);
+        Log("интерфейс: {}", web_dir);
     }
     // Окно профиля — та же страница с маршрутом #/profile.
     // SINTENCE_NO_PROFILE=1 — только оверлей, как раньше.
@@ -178,5 +198,12 @@ int main() {
         }
         options.profile_url = base + L"#/profile";
     }
-    return sintence::RunOverlay(options);
+    const int code = sintence::RunOverlay(options);
+
+    // Выход сразу, без деструкторов служб: история может спать в ограничителе
+    // запросов Riot до двух минут, и процесс висел бы невидимым уже после
+    // «Выход». Терять нечего — матчи в SQLite пишутся транзакциями, журнал
+    // сбрасывается построчно; снятие в диспетчере задач ровно такое же.
+    Log("===== выход, код {} =====", code);
+    std::_Exit(code);
 }

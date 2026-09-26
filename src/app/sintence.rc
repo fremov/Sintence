@@ -1,0 +1,6 @@
+#pragma code_page(65001)
+// Ресурсы sintence.exe: иконка приложения — проводник, панель задач,
+// заголовки окон и трей. Первая иконка в exe становится иконкой файла.
+#include "resource.h"
+
+IDI_SINTENCE ICON "sintence.ico"

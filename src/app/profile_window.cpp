@@ -4,7 +4,8 @@
 #include <wrl.h>
 
 #include <algorithm>
-#include <print>
+
+#include "app_log.h"
 
 using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
@@ -24,6 +25,7 @@ constexpr DWORD kDwmUseImmersiveDarkMode = 20;
 
 struct ProfileState {
     std::wstring url;
+    std::function<void()> on_hide;
     ComPtr<ICoreWebView2Controller> controller;
 };
 
@@ -64,8 +66,23 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
             }
             return 0;
 
-        // Главное окно: закрыли — приложение завершается (цикл сообщений
-        // в RunOverlay выходит по WM_QUIT).
+        // Крестик — в трей. WebView2 перестаёт рисовать, страница видит
+        // visibilityState = hidden и реже опрашивает сервер.
+        case WM_CLOSE:
+            ShowWindow(hwnd, SW_HIDE);
+            if (ProfileState* state = StateOf(hwnd)) {
+                if (state->controller) {
+                    state->controller->put_IsVisible(FALSE);
+                }
+                if (state->on_hide) {
+                    state->on_hide();
+                }
+            }
+            Log("окно статистики спрятано в трей");
+            return 0;
+
+        // Сюда доходит только выход из меню трея (DestroyWindow): цикл
+        // сообщений в RunOverlay выходит по WM_QUIT.
         case WM_DESTROY:
             if (ProfileState* state = StateOf(hwnd)) {
                 if (state->controller) {
@@ -92,9 +109,11 @@ HWND CreateProfileWindow(HINSTANCE instance, const ProfileWindowOptions& options
     window_class.hInstance = instance;
     window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     window_class.hbrBackground = CreateSolidBrush(kBackground);
+    window_class.hIcon = options.icon;
+    window_class.hIconSm = options.small_icon;
     window_class.lpszClassName = L"SintenceProfile";
     if (RegisterClassExW(&window_class) == 0) {
-        std::println("окно профиля: RegisterClassExW не прошёл, код {}", GetLastError());
+        LogError("окно профиля: RegisterClassExW не прошёл, код {}", GetLastError());
         return nullptr;
     }
 
@@ -112,11 +131,11 @@ HWND CreateProfileWindow(HINSTANCE instance, const ProfileWindowOptions& options
                                 WS_OVERLAPPEDWINDOW, x, y, width, height, nullptr, nullptr,
                                 instance, nullptr);
     if (hwnd == nullptr) {
-        std::println("окно профиля не создалось: код {}", GetLastError());
+        LogError("окно профиля не создалось: код {}", GetLastError());
         return nullptr;
     }
     SetWindowLongPtrW(hwnd, GWLP_USERDATA,
-                      reinterpret_cast<LONG_PTR>(new ProfileState{options.url, nullptr}));
+                      reinterpret_cast<LONG_PTR>(new ProfileState{options.url, options.on_hide, nullptr}));
 
     const BOOL dark = TRUE;
     DwmSetWindowAttribute(hwnd, kDwmUseImmersiveDarkMode, &dark, sizeof(dark));
@@ -160,6 +179,19 @@ void AttachProfileWebView(HWND hwnd, ICoreWebView2Environment* environment) {
                       return S_OK;
                   })
                   .Get());
+}
+
+void ShowProfileWindow(HWND hwnd) {
+    if (hwnd == nullptr) {
+        return;
+    }
+    ShowWindow(hwnd, IsIconic(hwnd) ? SW_RESTORE : SW_SHOW);
+    if (ProfileState* state = StateOf(hwnd); state && state->controller) {
+        state->controller->put_IsVisible(TRUE);
+        FitWebView(hwnd);
+    }
+    SetForegroundWindow(hwnd);
+    Log("окно статистики показано");
 }
 
 }  // namespace sintence

@@ -8,6 +8,7 @@
 
 #include <WebView2.h>
 
+#include <functional>
 #include <string>
 
 // app/profile_window — обычное окно приложения: профиль игрока, последние
@@ -19,8 +20,9 @@
 // (один браузерный процесс на оба окна). Страница та же, что у оверлея,
 // с маршрутом #/profile.
 //
-// Закрытие окна профиля завершает приложение: это его главное окно.
-// Оверлей без него живёт только до Ctrl+C в консоли.
+// Крестик окно не закрывает, а прячет в трей: PgDn продолжает открывать
+// оверлей, окно возвращается щелчком по значку. Приложение завершается
+// только пунктом «Выход» в меню значка (app/tray_icon).
 //
 // Сообщения от страницы окно не принимает: управлять им интерфейсу нечем,
 // а overlay/config от этой страницы оверлей двигать не должен.
@@ -32,14 +34,21 @@ struct ProfileWindowOptions {
     std::wstring title = L"Sintence";
     int width = 1360;
     int height = 900;
+    HICON icon = nullptr;        // заголовок окна и панель задач
+    HICON small_icon = nullptr;
+    // Окно спрятали крестиком — владелец трея может сказать об этом.
+    std::function<void()> on_hide;
 };
 
 // Создаёт окно и показывает его по центру экрана (размер обрезается
-// по экрану). nullptr — окно не создалось, причина в консоли.
+// по экрану). nullptr — окно не создалось, причина в журнале.
 HWND CreateProfileWindow(HINSTANCE instance, const ProfileWindowOptions& options);
 
 // Поднимает WebView2 внутри окна на готовом окружении и открывает url.
 void AttachProfileWebView(HWND hwnd, ICoreWebView2Environment* environment);
+
+// Вернуть окно из трея: показать, развернуть, вывести на передний план.
+void ShowProfileWindow(HWND hwnd);
 
 }  // namespace sintence
 

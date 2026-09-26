@@ -4,9 +4,9 @@
 
 #include <chrono>
 #include <filesystem>
-#include <print>
 #include <utility>
 
+#include "app_log.h"
 #include "history_schema.h"  // kHistorySchema — встроен из project/data при сборке
 
 namespace sintence {
@@ -26,7 +26,7 @@ class Statement {
 public:
     Statement(sqlite3* db, const char* sql) {
         if (sqlite3_prepare_v2(db, sql, -1, &stmt_, nullptr) != SQLITE_OK) {
-            std::println("история: не подготовлен запрос: {}", sqlite3_errmsg(db));
+            LogError("история: не подготовлен запрос: {}", sqlite3_errmsg(db));
             stmt_ = nullptr;
         }
     }
@@ -75,7 +75,7 @@ private:
 bool Exec(sqlite3* db, const char* sql) {
     char* error = nullptr;
     if (sqlite3_exec(db, sql, nullptr, nullptr, &error) != SQLITE_OK) {
-        std::println("история: {}", error ? error : "ошибка SQL");
+        LogError("история: {}", error ? error : "ошибка SQL");
         sqlite3_free(error);
         return false;
     }
@@ -109,7 +109,7 @@ std::unique_ptr<SqliteMatchStore> SqliteMatchStore::Open(const std::string& path
 
     auto impl = std::make_unique<Impl>();
     if (sqlite3_open(path.c_str(), &impl->db) != SQLITE_OK) {
-        std::println("история: не открыть {}: {}", path,
+        LogError("история: не открыть {}: {}", path,
                      impl->db ? sqlite3_errmsg(impl->db) : "нет памяти");
         return nullptr;
     }

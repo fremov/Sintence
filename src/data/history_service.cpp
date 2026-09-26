@@ -1,10 +1,10 @@
 #include "history_service.h"
 
 #include <algorithm>
-#include <print>
 #include <utility>
 #include <vector>
 
+#include "app_log.h"
 #include "match_detail_json.h"
 #include "riot_api_json.h"
 
@@ -182,7 +182,7 @@ void HistoryService::Worker() {
 }
 
 void HistoryService::RunPlayerJob(const PlayerJob& job) {
-    std::println("история: {} — последние {} игр", job.riot_id, job.depth);
+    Log("история: {} — последние {} игр", job.riot_id, job.depth);
 
     const auto puuid = client_->ResolvePuuid(job.riot_id);
     if (!puuid) {
@@ -215,7 +215,7 @@ void HistoryService::RunPlayerJob(const PlayerJob& job) {
             missing.push_back(id);
         }
     }
-    std::println("история: {} — матчей {}, скачать {}", job.riot_id, ids.size(), missing.size());
+    Log("история: {} — матчей {}, скачать {}", job.riot_id, ids.size(), missing.size());
 
     const std::lock_guard<std::mutex> lock(mutex_);
     auto& status = status_[job.riot_id];
@@ -247,13 +247,13 @@ void HistoryService::RunMatchJob(const std::string& match_id) {
     const auto raw = client_->LoadMatchJson(match_id);
     if (!raw) {
         if (client_->LastStatus() != kNotFound && !Retry(match_queue_, match_id)) {
-            std::println("история: {} не скачался за {} попытки", match_id, kMaxAttempts);
+            LogError("история: {} не скачался за {} попытки", match_id, kMaxAttempts);
         }
         return;
     }
     const auto match = ParseMatchDetail(*raw);
     if (!match) {
-        std::println("история: {} не разобрался", match_id);
+        LogError("история: {} не разобрался", match_id);
         return;
     }
     store_.SaveMatch(*match, *raw);
@@ -270,7 +270,7 @@ void HistoryService::RunTimelineJob(const std::string& match_id) {
     if (client_->LastStatus() != kNotFound && Retry(timeline_queue_, match_id + "/timeline")) {
         return;
     }
-    std::println("история: timeline {} не скачался", match_id);
+    LogError("история: timeline {} не скачался", match_id);
     const std::lock_guard<std::mutex> lock(mutex_);
     failed_timelines_.insert(match_id);
 }

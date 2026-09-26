@@ -38,6 +38,12 @@ build\tests\Debug\sintence_tests.exe --source-file="*rate_limiter*"   # одна
   перечисляются в `src/CMakeLists.txt` руками.
 - Debug собирается с ASan. `clang_rt.asan*.dll` копируется к exe; без неё
   процесс падает с `0xc0000135` ещё до `main`.
+- `sintence.exe` — оконное приложение без консоли, живёт в трее: крестик окна
+  статистики прячет его, выход — меню значка. Одна копия на порт (второй запуск
+  показывает окно первой). Всё, что раньше печаталось, — в журнале
+  `%LOCALAPPDATA%\Sintence\logs\sintence.log` (`sintence-<порт>.log` для
+  не 8777) через `data/app_log` (`Log`, `LogError`); `std::println` в `src/`
+  не использовать. Данные WebView2 — в `%LOCALAPPDATA%\Sintence\WebView2`.
 - `sintence.exe` требует прав администратора (иначе окно не встанет поверх игры
   с Vanguard). Для отладки без UAC: `-DSINTENCE_REQUIRE_ADMIN=OFF` в отдельный `build-noadmin`.
 - Тесты не ходят в сеть, не требуют ключа и запущенной игры: только фикстуры

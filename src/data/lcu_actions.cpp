@@ -1,8 +1,8 @@
 #include "lcu_actions.h"
 
 #include <format>
-#include <print>
 
+#include "app_log.h"
 #include "json.hpp"
 #include "json_helpers.h"
 #include "lcu_json.h"
@@ -176,7 +176,7 @@ ActionResult LcuActions::ApplyRunePage(const RunePageSpec& page, bool replace_cu
         result.message = "клиент не принял страницу: " + ClientMessage(created);
         return result;
     }
-    std::println("руны: страница «{}» записана и выбрана", page.name);
+    Log("руны: страница «{}» записана и выбрана", page.name);
     result.status = ActionResult::Status::Ok;
     result.message = "руны применены";
     return result;
@@ -225,7 +225,7 @@ ActionResult LcuActions::ApplySummonerSpells(int spell_a, int spell_b) {
         result.message = "клиент не принял заклинания: " + ClientMessage(patched);
         return result;
     }
-    std::println("заклинания: {} и {} выбраны", slot1, slot2);
+    Log("заклинания: {} и {} выбраны", slot1, slot2);
     result.status = ActionResult::Status::Ok;
     result.message = "заклинания применены";
     return result;
