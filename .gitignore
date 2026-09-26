@@ -53,3 +53,10 @@ PROGRESS.md
 REVIEW.md
 CLAUDE.md
 .claude/
+
+# База матчей и статика Data Dragon: гигабайты, пересобираются краулером.
+# Источник правды для приложения — пак в project/data/packs, он маленький
+# и в репозиторий попадает.
+project/data/base.sqlite
+project/data/base.sqlite-*
+project/data/static/

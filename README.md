@@ -112,6 +112,30 @@ cd web && npm run dev          # http://localhost:5173, hot reload
 Vite proxies `/api` to the application, so the page in the browser shows real
 data from the running match. Details in `web/README.md`.
 
+## Champion preferences: collecting the data
+
+The scoreboard shows what the majority builds on each champion — keystone,
+skill order, first item — for the rank bracket of the player in question.
+That is computed offline, not in game: it takes hundreds of thousands of
+observations, and a personal key allows 50 requests per minute.
+
+```powershell
+python scripts/crawl.py --seed            # seed the frontier from the ladder
+python scripts/crawl.py --hours 8         # overnight collection, Ctrl+C safe
+python scripts/crawl.py --stats           # what is in the database
+python scripts/build_pack.py              # SQLite -> project/data/packs
+python scripts/crawl.py --prune 16.19     # drop everything but the live patch
+```
+
+Measured on an RU personal key: **~1430 matches per hour** with timelines
+(skill order and purchase order), ~2900 without. Every match is ten
+observations, so one night is roughly 100 000 of them.
+
+The application never touches the database. It reads `index.json`, then the
+pack it points at — a few megabytes that load into memory whole. The same
+contract works over HTTP once the collector moves to a server, which is also
+where the Riot key belongs the moment the app is distributed to anyone else.
+
 ## Tests
 
 ```powershell
@@ -131,11 +155,20 @@ in `project/data/fixtures/`. Debug builds enable the address sanitizer.
 
 ## Riot API key
 
-The key is only needed for match history; the overlay works without it.
+The key powers the player profiles shown on each scoreboard card — solo queue
+rank, LP, win/loss and the top three champions by mastery. The overlay works
+without it: `/api/profiles` answers 501 and the cards simply omit that row.
 
-The key **never enters the repository or the compiled binary**: it lives in a
-file in the user's profile directory and is read at startup. Match dumps are
-produced by `scripts/fetch_matches.py` (Python standard library only, no pip, no
+The key **never enters the repository or the compiled binary**. It is read at
+startup from the `SINTENCE_RIOT_KEY` environment variable, or from
+`%LOCALAPPDATA%\Sintence\riot_key.txt` (first line, whitespace trimmed).
+
+A personal key is limited to **20 requests per second and 100 per 2 minutes**,
+across every endpoint. A ten-player lobby costs 30 requests, so profiles arrive
+progressively over roughly forty seconds; the UI shows the progress. Requests go
+through a sliding-window rate limiter and `puuid` values are cached, so a rematch
+against the same people costs nothing. Match dumps are produced by
+`scripts/fetch_matches.py` (Python standard library only, no pip, no
 dependencies).
 
 The Riot constraints the application honours are listed in `project/POLICY.md`.
@@ -143,6 +176,6 @@ The Riot constraints the application honours are listed in `project/POLICY.md`.
 ## Status
 
 Under active development. Done: the overlay on live data, Match-V5 and Live
-Client Data parsing, per-champion aggregation. In progress: Riot API requests
-from the application itself, caching and rate limiting, history of the players
-in the current match.
+Client Data parsing, per-champion aggregation, Riot API requests from the
+application itself with rate limiting and caching, lobby profiles (rank and
+mastery). In progress: per-player match history on demand.

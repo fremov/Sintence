@@ -1,9 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import ActivePlayerBar from './components/ActivePlayerBar.vue'
+import AdvicePanel from './components/AdvicePanel.vue'
 import PlayerCard from './components/PlayerCard.vue'
+import { useChampionNames } from './useChampionNames'
 import { useLiveGame } from './useLiveGame'
+import { useProfiles } from './useProfiles'
+import { usePreferences } from './usePreferences'
 
 const { game, state } = useLiveGame(1000)
+const { profiles, progress, enabled: profilesEnabled } = useProfiles(3000)
+const { matchups, you, enabled: packEnabled } = usePreferences(5000)
+const { nameOf } = useChampionNames()
 
 const clock = computed(() => {
   const total = Math.trunc(game.value?.stats.gameTimeSeconds ?? 0)
@@ -54,6 +62,23 @@ const emptyHint = computed(() => {
   }
   return 'Окно живёт, а сервер внутри sintence.exe — нет.'
 })
+
+// Подпись о докачке профилей. Тридцать запросов при лимите ключа
+// растягиваются секунд на сорок, и молчащий интерфейс в это время
+// выглядит сломанным.
+const profilesLabel = computed(() => {
+  if (!profilesEnabled.value) return 'профили выключены: нет ключа Riot'
+  const { done, total, running } = progress.value
+  if (total === 0) return 'профили: жду лобби'
+  if (running || done < total) return `профили: ${done} из ${total}`
+  return `профили: ${done}`
+})
+
+// Пак статичен в пределах патча, поэтому подпись короткая: он или есть,
+// или его надо собрать. Молчание тут хуже — выглядит как поломка.
+const packLabel = computed(() =>
+  packEnabled.value ? 'мета загружена' : 'меты нет: собери пак',
+)
 </script>
 
 <template>
@@ -68,6 +93,10 @@ const emptyHint = computed(() => {
       <span class="feed" :class="state">{{ feedLabel[state] }}</span>
     </header>
 
+    <ActivePlayerBar v-if="state === 'live' && game?.activePlayer" :active="game.activePlayer" />
+
+    <AdvicePanel v-if="state === 'live' && you" :you="you" :matchups="matchups" />
+
     <main v-if="state === 'live' && game" class="board">
       <section class="team order">
         <div class="team-head">
@@ -79,6 +108,8 @@ const emptyHint = computed(() => {
           :key="p.riotId + p.championName"
           :player="p"
           :minutes="minutes"
+          :profile="profiles[p.riotId]"
+          :champion-name="nameOf"
         />
       </section>
 
@@ -92,6 +123,8 @@ const emptyHint = computed(() => {
           :key="p.riotId + p.championName"
           :player="p"
           :minutes="minutes"
+          :profile="profiles[p.riotId]"
+          :champion-name="nameOf"
         />
       </section>
     </main>
@@ -102,7 +135,11 @@ const emptyHint = computed(() => {
     </main>
 
     <footer>
-      <span>данные обновляются раз в секунду</span>
+      <span>табло — раз в секунду</span>
+      <span class="dot">·</span>
+      <span>{{ profilesLabel }}</span>
+      <span class="dot">·</span>
+      <span>{{ packLabel }}</span>
       <span class="spacer"></span>
       <span><kbd>PgDn</kbd> — скрыть</span>
     </footer>
@@ -263,6 +300,10 @@ footer {
   border-top: 1px solid var(--edge);
   color: var(--muted);
   font-size: 11px;
+}
+
+.dot {
+  color: #3a4351;
 }
 
 .spacer {

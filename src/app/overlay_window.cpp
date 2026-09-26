@@ -1,11 +1,16 @@
 #include "overlay_window.h"
 
+// windows.h определяет макросы min и max, и тогда std::min(...) разбирается
+// как подстановка макроса: "недопустимая лексема справа от ::" (C2589).
+// NOMINMAX обязан стоять ДО включения windows.h.
+#define NOMINMAX
 #include <windows.h>
 #include <windowsx.h>  // GET_X_LPARAM / GET_Y_LPARAM
 #include <wrl.h>
 
 #include <WebView2.h>
 
+#include <algorithm>
 #include <chrono>
 #include <format>
 #include <fstream>
@@ -19,7 +24,10 @@ namespace sintence {
 
 namespace {
 
-constexpr COLORREF kTransparentKey = RGB(255, 0, 255);
+// Фон окна. Совпадает с --panel из web/src/styles.css: пока WebView2
+// не отрисовал первый кадр, видно именно его, и другой цвет дал бы
+// вспышку при каждом показе панели.
+constexpr COLORREF kPanelBackground = RGB(0x12, 0x16, 0x1d);
 constexpr int kHotkeyVisibilityId = 1;
 
 // Сообщение «переключить панель», которое шлёт себе хук клавиатуры.
@@ -90,8 +98,9 @@ struct OverlayState {
     ComPtr<ICoreWebView2Controller> controller;
     // Окно стартует скрытым: оверлей нужен по требованию, а не постоянно.
     bool visible = false;
-    int width = 1120;
-    int height = 640;
+    // Перекрывается значениями из OverlayOptions при запуске.
+    int width = 2240;
+    int height = 1280;
 };
 
 OverlayState* StateOf(HWND hwnd) {
@@ -107,8 +116,8 @@ OverlayState* StateOf(HWND hwnd) {
 //
 // put_IsVisible обязателен, и это не перестраховка: контроллер WebView2,
 // созданный при скрытом окне, остаётся невидимым сам по себе и не следит
-// за ShowWindow. Без этой строки окно появляется пустым — то есть целиком
-// прозрачным, потому что весь его фон и есть цветовой ключ.
+// за ShowWindow. Без этой строки окно появляется пустым — виден только
+// сплошной фон окна.
 void ApplyVisibility(HWND hwnd, OverlayState& state, bool visible) {
     if (!visible) {
         ShowWindow(hwnd, SW_HIDE);
@@ -124,16 +133,22 @@ void ApplyVisibility(HWND hwnd, OverlayState& state, bool visible) {
     // при создании: разрешение меняется при выходе из игры и обратно.
     const int screen_width = GetSystemMetrics(SM_CXSCREEN);
     const int screen_height = GetSystemMetrics(SM_CYSCREEN);
-    const int x = (screen_width - state.width) / 2;
-    const int y = (screen_height - state.height) / 2;
+
+    // Запрошенный размер обрезается по экрану: на 1920x1080 панель
+    // в 2240 точек шириной уехала бы за край, и половину карточек
+    // стало бы не видно вовсе. Девяносто процентов — чтобы панель
+    // читалась как окно поверх игры, а не как второй полный экран.
+    const int width = std::min(state.width, screen_width * 9 / 10);
+    const int height = std::min(state.height, screen_height * 9 / 10);
+    const int x = (screen_width - width) / 2;
+    const int y = (screen_height - height) / 2;
 
     // Поверх полноэкранной игры одного ShowWindow мало. SetForegroundWindow
     // Windows выполняет только у процесса, которому и так принадлежит
     // передний план; у всех остальных он молча проваливается — это защита
     // от выскакивающих окон. Обход штатный: на миг присоединить свой поток
     // ввода к потоку активного окна, тогда права переднего плана общие.
-    SetWindowPos(hwnd, HWND_TOPMOST, x, y, state.width, state.height,
-                 SWP_SHOWWINDOW);
+    SetWindowPos(hwnd, HWND_TOPMOST, x, y, width, height, SWP_SHOWWINDOW);
 
     const HWND foreground = GetForegroundWindow();
     const DWORD foreground_thread = GetWindowThreadProcessId(foreground, nullptr);
@@ -228,14 +243,19 @@ int RunOverlay(const OverlayOptions& options) {
     window_class.lpfnWndProc = WindowProc;
     window_class.hInstance = instance;
     window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    window_class.hbrBackground = CreateSolidBrush(kTransparentKey);
+    window_class.hbrBackground = CreateSolidBrush(kPanelBackground);
     window_class.lpszClassName = L"SintenceOverlay";
     if (RegisterClassExW(&window_class) == 0) {
         std::println("RegisterClassExW не прошёл: код {}", GetLastError());
         return 1;
     }
 
-    // WS_EX_LAYERED    — прозрачность по цветовому ключу;
+    // Окно НЕ layered: у layered-окна с цветовым ключом Windows пропускает
+    // мышь сквозь пиксели ключа, и клик по прозрачному участку уходит
+    // в игру. Обойти это нельзя — hit-test считается по видимой области
+    // слоя раньше, чем окно получает WM_NCHITTEST. Панель непрозрачна
+    // целиком, поэтому все клики достаются ей.
+    //
     // WS_EX_TOPMOST    — поверх игры;
     // WS_EX_TOOLWINDOW — нет в Alt+Tab и на панели задач.
     //
@@ -243,7 +263,7 @@ int RunOverlay(const OverlayOptions& options) {
     // фокус и клавиатуру. Пока он стоял, окно не активировалось, и все
     // нажатия продолжали уходить в игру.
     HWND hwnd = CreateWindowExW(
-        WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
         window_class.lpszClassName, options.title.c_str(), WS_POPUP,
         // Координаты здесь неважны: панель центрируется при каждом показе.
         0, 0, options.width, options.height,
@@ -254,7 +274,7 @@ int RunOverlay(const OverlayOptions& options) {
     }
 
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&state));
-    SetLayeredWindowAttributes(hwnd, kTransparentKey, 0, LWA_COLORKEY);
+
     // Окно создаётся скрытым: ShowWindow здесь нет намеренно.
     // Первое появление — по PgDn.
 
@@ -307,12 +327,14 @@ int RunOverlay(const OverlayOptions& options) {
                             OverlayState* state = StateOf(hwnd);
                             state->controller = controller;
 
-                            // Прозрачный фон WebView: сквозь него виден
-                            // пурпурный фон окна, который вырезает ключ.
+                            // Непрозрачный фон WebView того же цвета,
+                            // что и фон окна: прозрачность больше не нужна,
+                            // а сквозь неё было бы видно фон окна при
+                            // перерисовке.
                             ComPtr<ICoreWebView2Controller2> controller2;
                             if (SUCCEEDED(controller->QueryInterface(IID_PPV_ARGS(&controller2)))) {
-                                COREWEBVIEW2_COLOR transparent = {0, 255, 0, 255};
-                                controller2->put_DefaultBackgroundColor(transparent);
+                                COREWEBVIEW2_COLOR panel = {255, 0x12, 0x16, 0x1d};
+                                controller2->put_DefaultBackgroundColor(panel);
                             }
 
                             RECT bounds{};

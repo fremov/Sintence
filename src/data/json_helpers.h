@@ -28,6 +28,10 @@ std::optional<int> GetInt(const nlohmann::json& obj, std::string_view key);
 // Нужен для полей, где Riot отдаёт дробь: время матча, respawnTimer, wardScore.
 std::optional<double> GetDouble(const nlohmann::json& obj, std::string_view key);
 
+// Большое целое. Нужно там, где int переполняется молча: championPoints
+// и lastPlayTime у Riot имеют порядок 1e6 и 1.7e12 соответственно.
+std::optional<long long> GetInt64(const nlohmann::json& obj, std::string_view key);
+
 // Строка. "championName": "Annie" -> "Annie"; число или null -> nullopt.
 std::optional<std::string> GetString(const nlohmann::json& obj, std::string_view key);
 

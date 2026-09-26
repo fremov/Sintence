@@ -17,27 +17,14 @@ bool LiveClientSource::IsAvailable() const {
 }
 
 std::optional<LiveGame> LiveClientSource::LoadGame() const {
-    auto stats_body = Fetch("/liveclientdata/gamestats");
-    if (!stats_body) {
+    // Один запрос вместо трёх: /allgamedata содержит и статистику матча,
+    // и табло с предметами, и активного игрока с рунами и способностями.
+    // Тело около 40-80 КБ, но это локальный сокет.
+    auto body = Fetch("/liveclientdata/allgamedata");
+    if (!body) {
         return std::nullopt;
     }
-    auto players_body = Fetch("/liveclientdata/playerlist");
-    if (!players_body) {
-        return std::nullopt;
-    }
-    auto stats = ParseLiveGameStats(*stats_body);
-    if (!stats) {
-        return std::nullopt;
-    }
-    auto players = ParseLivePlayers(*players_body);
-    if (!players) {
-        return std::nullopt;
-    }
-    LiveGame game;
-    game.stats = std::move(*stats);
-    game.players = std::move(*players);
-
-    return game;
+    return ParseAllGameData(*body);
 }
 
 std::optional<std::string> LiveClientSource::Fetch(

@@ -24,12 +24,55 @@ enum class Team {
     Chaos,
 };
 
+// Предмет в инвентаре. Live Client отдаёт готовое название — справочник
+// Data Dragon для этого не нужен.
+struct LiveItem {
+    int item_id = 0;
+    std::string name;   // "Doran's Blade"
+    int slot = 0;       // 0..6, где 6 — ячейка тринкета
+    int count = 1;      // стак зелий
+    int price = 0;      // цена покупки, не суммарная за стак
+};
+
+// Способность активного игрока. Уровень — то, сколько очков в неё вложено.
+struct LiveAbility {
+    std::string slot;  // "Q", "W", "E", "R", "Passive"
+    std::string name;  // "Death Lotus"
+    int level = 0;     // у Passive всегда 0
+};
+
+// Страница рун активного игрока.
+struct LiveRunes {
+    std::string keystone;        // "Electrocute"
+    std::string primary_tree;    // "Domination"
+    std::string secondary_tree;  // "Precision"
+    std::vector<std::string> minor_runes;  // пять малых рун, порядок Riot
+};
+
+// Активный игрок — тот, за кем клиент. Про него API отдаёт то, чего нет
+// про остальных: уровни способностей, руны целиком и текущее золото.
+//
+// Чужие способности и руны сюда не попадут никогда: Live Client их
+// не отдаёт, а достраивать скрытое состояние запрещает POLICY.md.
+struct LiveActivePlayer {
+    std::string riot_id;
+    int level = 0;
+    double current_gold = 0.0;
+    std::vector<LiveAbility> abilities;  // Q, W, E, R, Passive
+    LiveRunes runes;
+};
+
 // Одна строка табло живого матча: то, что игрок и так видит на экране (Tab).
 //
 // Скрытого состояния здесь нет и быть не может — Live Client Data API его
 // не отдаёт, и project/POLICY.md запрещает на нём строить.
 struct LivePlayer {
-    std::string champion_name;  // "Annie"
+    std::string champion_name;  // как показывает клиент: "Annie", "Владимир"
+
+    // Каноническое имя из rawChampionName ("Zed", "MonkeyKing").
+    // Нужно потому, что champion_name локализован языком клиента, и по нему
+    // нельзя ни искать в паке предпочтений, ни ходить в Data Dragon.
+    std::string champion_key;
     std::string riot_id;        // "Riot Tuxedo#TXC1"
     std::string position;       // "MIDDLE"; в ARAM приходит пустой строкой
     Team team = Team::Order;
@@ -40,6 +83,10 @@ struct LivePlayer {
     int creep_score = 0;
     bool is_bot = false;
     bool is_dead = false;
+
+    // Инвентарь. Приходит в /playerlist и в /allgamedata, поэтому известен
+    // про ВСЕХ участников, а не только про активного игрока.
+    std::vector<LiveItem> items;
 };
 
 // Общие сведения о матче: ровно то, что отдаёт /liveclientdata/gamestats.
@@ -53,6 +100,10 @@ struct LiveGameStats {
 struct LiveGame {
     LiveGameStats stats;
     std::vector<LivePlayer> players;
+
+    // Есть только в ответе /allgamedata. Спектатор и реплей активного
+    // игрока не имеют, поэтому optional, а не поле по умолчанию.
+    std::optional<LiveActivePlayer> active_player;
 };
 
 // Интерфейс источника живого матча.

@@ -62,6 +62,26 @@ std::optional<std::vector<LivePlayer>> ParseLivePlayers(std::string_view json_te
 //   - отсутствующее поле — nullopt: без времени матча снимок бесполезен.
 std::optional<LiveGameStats> ParseLiveGameStats(std::string_view json_text);
 
+// Разбирает ответ GET /liveclientdata/allgamedata — весь снимок разом.
+//
+// Один запрос вместо трёх, и это не экономия ради экономии: gamestats,
+// playerlist и activeplayer, взятые по отдельности, относятся к РАЗНЫМ
+// моментам игры, а здесь всё согласовано между собой.
+//
+// Контракт:
+//   - отсутствует gameData или allPlayers -> nullopt: без табло и времени
+//     снимок бесполезен;
+//   - activePlayer отсутствует или пришёл не объектом (режим наблюдателя,
+//     реплей) -> игра возвращается БЕЗ активного игрока, это не ошибка;
+//   - разбор игроков и статистики — те же правила, что у функций выше.
+//
+// Что добавляется по сравнению с playerlist:
+//   allPlayers[].items            -> LivePlayer::items (у всех десяти)
+//   activePlayer.abilities        -> уровни Q/W/E/R и пассивки
+//   activePlayer.fullRunes        -> keystone, два дерева, малые руны
+//   activePlayer.currentGold      -> золото на руках
+std::optional<LiveGame> ParseAllGameData(std::string_view json_text);
+
 }  // namespace sintence
 
 #endif  // SINTENCE_DATA_LIVE_CLIENT_JSON_H

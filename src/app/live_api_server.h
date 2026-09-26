@@ -4,7 +4,9 @@
 #include <memory>
 #include <string>
 
-#include "live_game.h"  // интерфейс LiveGameSource
+#include "live_game.h"         // интерфейс LiveGameSource
+#include "preference_pack.h"   // PreferencePack из data/
+#include "profile_service.h"   // ProfileService из data/
 
 // app/live_api_server — локальный HTTP-сервер, которым питается интерфейс.
 //
@@ -12,10 +14,16 @@
 // что за ним — Live Client Data API или фикстура.
 //
 // Эндпоинты:
-//   GET /api/live  -> 200 + JSON снимка матча, либо 503, если матча нет.
-//                     503, а не 404: ресурс существует, он временно
-//                     недоступен, и клиент должен просто спросить позже.
-//   GET /*         -> статика из web/dist (собранный Vue).
+//   GET /api/live     -> 200 + JSON снимка матча, либо 503, если матча нет.
+//                        503, а не 404: ресурс существует, он временно
+//                        недоступен, и клиент должен просто спросить позже.
+//   GET /api/profiles -> 200 + профили игроков лобби (ранг, топ-3 мастери)
+//                        и прогресс докачки; 503, если матча нет, и 501,
+//                        если ключ Riot не задан.
+//   GET /api/preferences -> 200 + предпочтения по каждому игроку лобби:
+//                        руны, порядок скиллов, первый предмет, ядро.
+//                        503, если матча нет, 501, если пак не загружен.
+//   GET /*            -> статика из web/dist (собранный Vue).
 //
 // Сервер слушает только 127.0.0.1: снаружи машины к нему подключиться
 // нельзя, поэтому ни TLS, ни аутентификации здесь нет и не нужно.
@@ -26,7 +34,12 @@ class LiveApiServer {
 public:
     // source   — откуда брать данные; должен жить дольше сервера.
     // web_root — каталог со собранным фронтендом (web/dist).
-    LiveApiServer(const LiveGameSource& source, std::string web_root, int port = 8777);
+    // profiles — служба профилей Riot или nullptr, если ключа нет;
+    //            тоже должна жить дольше сервера.
+    // pack     — предпочтения по чемпионам или nullptr, если пака нет.
+    LiveApiServer(const LiveGameSource& source, std::string web_root, int port = 8777,
+                  ProfileService* profiles = nullptr,
+                  const PreferencePack* pack = nullptr);
     ~LiveApiServer();
 
     LiveApiServer(const LiveApiServer&) = delete;
@@ -53,6 +66,11 @@ private:
 // это граница между C++ и фронтендом, и держать её один в один проще,
 // чем переименовывать на полпути.
 std::string LiveGameToJson(const LiveGame& game);
+
+// Профили лобби в JSON для web/src/types.ts:
+//   {"progress": {...}, "profiles": [...]}
+std::string ProfilesToJson(const std::vector<PlayerProfile>& profiles,
+                           const ProfileService::Progress& progress);
 
 }  // namespace sintence
 
